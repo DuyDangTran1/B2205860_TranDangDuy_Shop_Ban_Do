@@ -53,6 +53,10 @@ class Categories {
   async getAll() {
     return this.Categories.find().toArray();
   }
+
+  async findCategoryByName(category_name) {
+    return await this.Categories.findOne({ category_name: category_name });
+  }
 }
 
 module.exports = Categories;
