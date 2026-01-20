@@ -7,6 +7,9 @@ import {
   validatePassword,
   validateConfirmPass,
 } from "../utils/validator.util";
+
+import UserService from "../services/user.service";
+
 export default {
   data() {
     return {
@@ -64,7 +67,13 @@ export default {
         const result = await window.confirmationResult.confirm(this.otpCode);
         const idToken = await result.user.getIdToken();
 
-        console.log("Xác thực thành công! Token nè ní:", idToken);
+        const registerData = {
+          ...this.user,
+          tokenSMS: idToken,
+        };
+
+        const user = new UserService();
+        const response = await user.register(registerData);
       } catch (error) {
         this.err.err_res = "Mã OTP không đúng hoặc đã hết hạn!";
       }
