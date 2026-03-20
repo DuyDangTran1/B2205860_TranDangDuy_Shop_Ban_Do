@@ -5,10 +5,12 @@ const Upload = require("../middelwares/multer.middelware");
 
 router
   .route("/")
-  .post(Upload.createUpload("products").single("image"), products.create);
+  .post(Upload.createUpload("products").single("image"), products.create)
+  .get(products.getAllProduct);
 
 router.route("/:category_name").get(products.findAllByCategory);
 
+// router.route("/brandProduct/:slug").get(products.allSupplierByCategory);
 router
   .route("/detail/:id")
   .get(products.getProductById)
