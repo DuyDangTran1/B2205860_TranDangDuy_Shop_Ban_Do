@@ -1,21 +1,71 @@
-<script setup>
-import { ref } from "vue";
-const isShowMega = ref(false);
+<script>
+import userService from "@/services/user.service";
+import Chat from "@/components/Chat.vue";
+import productService from "@/services/product.service";
+export default {
+  components: {
+    Chat,
+  },
+  data() {
+    return {
+      isShowMega: false,
+      accessToken: sessionStorage.getItem("accessToken") || null,
+      user: {},
+      name: sessionStorage.getItem("name"),
+      isChatOpen: false,
+      products: null,
+      searchKeyword: "",
+      searchResults: [],
+    };
+  },
+
+  methods: {
+    async loadData() {
+      try {
+        if (this.accessToken) {
+          this.user =
+            (await userService.me(this.accessToken)).user_information || {};
+
+          if (Object.keys(this.user).length > 0) {
+            sessionStorage.setItem("user", JSON.stringify(this.user));
+          }
+        }
+
+        const res = await productService.getAllProduct();
+
+        this.products = res?.products ? res.products : [];
+        // console.log(this.products);
+      } catch (error) {
+        console.log(error);
+      }
+    },
+
+    toggleChat() {
+      this.isChatOpen = !this.isChatOpen;
+    },
+
+    handleSearch() {
+      if (!this.searchKeyword.trim()) {
+        this.searchResults = [];
+        return;
+      }
+
+      this.searchResults = this.products?.filter((p) =>
+        p.product_name.toLowerCase().includes(this.searchKeyword.toLowerCase()),
+      );
+    },
+  },
+
+  mounted() {
+    this.loadData();
+  },
+};
 </script>
 <template>
-  <nav class="fixed-top navbar navbar-expand-lg navbar-light nav">
+  <nav class="sticky-top navbar navbar-expand-lg navbar-light nav">
     <div class="container-fluid">
       <!-- <div class="ms-5"></div> -->
       <a class="navbar-brand fw-bold title ms-5 text-white" href="#">SHOPDD</a>
-
-      <button
-        class="navbar-toggler"
-        type="button"
-        data-bs-toggle="collapse"
-        data-bs-target="#navbarSupportedContent"
-      >
-        <span class="navbar-toggler-icon"></span>
-      </button>
 
       <div
         class="collapse navbar-collapse justify-content-between"
@@ -23,7 +73,7 @@ const isShowMega = ref(false);
       >
         <ul class="navbar-nav mb-2 mb-lg-0 gap-4">
           <li class="nav-item mr-4">
-            <a class="nav-link active pl-5 text-white" href="#">Trang chủ</a>
+            <RouterLink class="nav-link active pl-5 text-white" :to="{name: 'Home'}">Trang chủ</RouterLink>
           </li>
 
           <li class="nav-item mr-4" @mouseleave="isShowMega = false">
@@ -34,30 +84,123 @@ const isShowMega = ref(false);
             >
               Sản phẩm
             </a>
-            <div
-              class="menu_products text-center"
-              v-show="isShowMega"
-              @mouseenter="isShowMega = true"
-            ></div>
           </li>
 
           <li class="nav-item mr-4">
-            <a class="nav-link text-white" href="#">Giới thiệu</a>
+            <RouterLink class="nav-link text-white" :to="{ name: 'About' }"
+              >Giới thiệu</RouterLink
+            >
           </li>
         </ul>
 
-        <div class="ms-auto d-flex align-items-center">
-          <form class="">
-            <input
-              class="form-control me-2 bg-transparent text-white"
-              type="search"
-              placeholder="Search"
-            />
-          </form>
-          <button class="btn_auth ms-3">Đăng nhập</button>
-          <button class="btn_auth me-5">Đăng kí</button>
-        </div>
+        <div class="ms-auto d-flex align-items-center gap-3">
+          <div class="search-container position-relative">
+            <form style="max-width: 250px; width: 250px">
+              <input
+                v-model="searchKeyword"
+                @input="handleSearch"
+                class="form-control me-2 bg-transparent text-white search-input shadow-none"
+                type="search"
+                placeholder="Tìm kiếm sản phẩm"
+              />
+            </form>
 
+            <div v-if="searchResults.length" class="search-dropdown shadow-lg">
+              <div
+                v-for="product in searchResults"
+                :key="product._id"
+                class="search-item"
+              >
+                <router-link
+                  class="router-link d-flex align-items-center gap-3 w-100 text-dark text-decoration-none"
+                  :to="{ name: 'detail', params: { id: product._id } }"
+                >
+                  <div class="search-item-img">
+                    <img
+                      :src="`http://localhost:3000/${product.image_url}`"
+                      width="40"
+                      class="rounded"
+                    />
+                  </div>
+                  <div
+                    class="product-name-mini text-truncate"
+                    style="max-width: 150px"
+                  >
+                    {{ product.product_name }}
+                  </div>
+                </router-link>
+              </div>
+            </div>
+          </div>
+
+          <div class="d-flex align-items-center gap-3">
+            <router-link :to="{ name: 'Cart' }" class="text-white pt-1">
+              <i class="fa-solid fa-cart-shopping fs-3 cart"></i>
+            </router-link>
+
+            <div class="chatbot-icon" @click="toggleChat">
+              <i class="fa-solid fa-comments fs-5"></i>
+            </div>
+          </div>
+
+          <div v-if="!accessToken" class="d-flex align-items-center gap-2">
+            <router-link
+              :to="{ name: 'Login' }"
+              class="btn_auth text-decoration-none"
+            >
+              Đăng nhập
+            </router-link>
+            <router-link
+              :to="{ name: 'Register' }"
+              class="btn_auth text-decoration-none"
+            >
+              Đăng kí
+            </router-link>
+          </div>
+
+          <div
+            v-else
+            class="d-flex align-items-center avatar-wrapper ms-0"
+            data-bs-toggle="dropdown"
+          >
+            <div class="avatar me-1">
+              <img
+                :src="
+                  user.image_url
+                    ? user.image_url
+                    : '/images/avatar_default/avatar_default.jpg'
+                "
+                alt="Profile"
+              />
+            </div>
+
+            <i class="bi bi-caret-down-fill"></i>
+            <ul class="dropdown-menu dropdown-menu-end shadow">
+              <li>
+                <router-link class="dropdown-item" href="#"
+                  >Hồ sơ cá nhân</router-link
+                >
+              </li>
+              <li><hr class="dropdown-divider" /></li>
+              <li>
+                <router-link class="dropdown-item" href="#"
+                  >Sản phẩm yêu thích</router-link
+                >
+              </li>
+              <li><hr class="dropdown-divider" /></li>
+              <li>
+                <router-link class="dropdown-item" href="#"
+                  >Lịch sử mua hàng</router-link
+                >
+              </li>
+
+              <li><hr class="dropdown-divider" /></li>
+              <li>
+                <button class="dropdown-item text-danger">Đăng xuất</button>
+              </li>
+            </ul>
+          </div>
+        </div>
         <!-- mega menu của sản phẩm -->
         <div
           class="menu_products text-center"
@@ -88,11 +231,30 @@ const isShowMega = ref(false);
           </div>
         </div>
       </div>
+      <div class="d-flex align-items-center">
+        <button
+          class="navbar-toggler"
+          type="button"
+          data-bs-toggle="collapse"
+          data-bs-target="#navbarSupportedContent"
+        >
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <span class="name me-5 text-white">{{ name }}</span>
+      </div>
     </div>
   </nav>
+  <Chat v-if="isChatOpen" @close="isChatOpen = false" />
 </template>
 <style scoped>
+.router-link {
+  text-decoration: none !important;
+  color: inherit;
+  display: flex;
+}
+
 .nav {
+  /* position: relative; */
   background-color: #533422;
 }
 
@@ -104,6 +266,7 @@ const isShowMega = ref(false);
   margin-left: 5px;
   border: 1px solid #ced4de;
   border-radius: 8px;
+  color: #000;
   background-color: #fff;
 }
 
@@ -138,5 +301,172 @@ const isShowMega = ref(false);
 input::placeholder {
   color: white !important;
   opacity: 0.8;
+}
+
+.avatar {
+  width: 50px;
+  height: 50px;
+  margin-right: 20px;
+}
+
+.avatar img {
+  width: 100%;
+  border-radius: 999px;
+}
+
+.avatar-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.avatar {
+  width: 50px;
+  height: 50px;
+  border: 2px solid rgba(83, 52, 34, 0.7);
+  border-radius: 50%;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar-wrapper i {
+  position: absolute;
+  /* display: inline-block;  */
+  width: 14px; /* Set cứng kích thước cho nó */
+  height: 14px;
+  bottom: -3px;
+  right: 9px;
+  color: #fff;
+  z-index: 1999 !important;
+}
+
+.dropdown-item {
+  padding: 8px 16px;
+}
+
+.dropdown-item:hover {
+  background-color: #ac7657 !important;
+  color: white !important;
+  transition: all 0.2s ease;
+}
+
+.dropdown-menu {
+  padding: 0;
+  margin: 0;
+  border: none;
+}
+
+.dropdown-divider {
+  margin: 0;
+}
+
+.cart {
+  color: #ac7657;
+}
+
+.chatbot-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #ac7657;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.chatbot-icon i {
+  color: white;
+}
+
+.chatbot-icon:hover {
+  transform: scale(1.1);
+  background: #8d5f45;
+}
+/* Style cho ô input tìm kiếm */
+.search-input {
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 20px;
+  padding: 8px 15px;
+  transition: all 0.3s ease;
+}
+
+.search-input:focus {
+  border-color: #ac7657;
+  box-shadow: 0 0 8px rgba(172, 118, 87, 0.5);
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.search-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 8px;
+  background: white;
+  width: 100%;
+  min-width: 250px;
+  max-height: 350px;
+  overflow-y: auto;
+  border-radius: 12px;
+  padding: 5px 0;
+  z-index: 9999;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.search-item {
+  padding: 10px 15px;
+  cursor: pointer;
+  transition: background 0.2s;
+  border-bottom: 1px solid #f9f9f9;
+}
+
+.search-item:last-child {
+  border-bottom: none;
+}
+
+.search-item:hover {
+  background: #f8f5f2;
+}
+
+/* Ảnh nhỏ trong tìm kiếm */
+.search-item-img {
+  width: 45px;
+  height: 45px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #f0f0f0;
+}
+
+.search-item-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.product-name-mini {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #333;
+  /* Giới hạn 2 dòng cho tên dài */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.search-dropdown::-webkit-scrollbar {
+  width: 5px;
+}
+.search-dropdown::-webkit-scrollbar-thumb {
+  background: #ac7657;
+  border-radius: 10px;
 }
 </style>
