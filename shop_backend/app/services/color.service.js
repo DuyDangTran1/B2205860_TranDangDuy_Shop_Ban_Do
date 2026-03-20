@@ -8,11 +8,10 @@ class Color {
   extractColorData(payload) {
     const color = {
       color_name: payload.color_name?.trim(),
-      hex_code: payload.hex_code?.trim(),
     };
 
     Object.keys(color).forEach(
-      (key) => color[key] === undefined && delete color[key]
+      (key) => color[key] === undefined && delete color[key],
     );
     return color;
   }
@@ -24,7 +23,7 @@ class Color {
         color_name: color.color_name,
       },
       { $set: color },
-      { returnDocument: "after", upsert: true }
+      { returnDocument: "after", upsert: true },
     );
   }
 
@@ -38,7 +37,7 @@ class Color {
     return await this.Color.findOneAndUpdate(
       filter,
       { $set: color },
-      { returnDocument: "after" }
+      { returnDocument: "after" },
     );
   }
 

@@ -17,10 +17,12 @@ class ProductVariant {
         : null,
       quantity: Number(payload.quantity),
       image_url: payload.image_url,
+      created: new Date(),
     };
 
     Object.keys(product_variant).forEach(
-      (key) => product_variant[key] === undefined && delete product_variant[key]
+      (key) =>
+        product_variant[key] === undefined && delete product_variant[key],
     );
 
     return product_variant;
@@ -38,7 +40,7 @@ class ProductVariant {
         size_id: product_variant.size_id,
       },
       { $set: product_variant, $inc: { quantity: quantity_product_variant } },
-      { returnDocument: "after", upsert: true }
+      { returnDocument: "after", upsert: true },
     );
   }
 
@@ -52,7 +54,7 @@ class ProductVariant {
     return await this.Product_variant.findOneAndUpdate(
       filter,
       { $set: update },
-      { returnDocument: "after" }
+      { returnDocument: "after" },
     );
   }
 
@@ -73,6 +75,12 @@ class ProductVariant {
         : null,
       color_id: ObjectId.isValid(color_id) ? new ObjectId(color_id) : null,
       size_id: ObjectId.isValid(size_id) ? new ObjectId(size_id) : null,
+    });
+  }
+
+  async findVariantById(id) {
+    return await this.Product_variant.findOne({
+      _id: ObjectId.isValid(id) ? new ObjectId(id) : null,
     });
   }
 }

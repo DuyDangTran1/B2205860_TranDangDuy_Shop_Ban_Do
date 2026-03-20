@@ -72,7 +72,6 @@ module.exports = (io) => {
         const userService = new UserService(MongoDB.client);
         await userService.updateChatMode(userId, "ai");
 
-        // io.to(userId).emit("chat_ended", "Bot AI sẽ tiếp tục hỗ trợ bạn.");
         io.emit("update_waiting_list"); // Load lại danh sách chờ cho Admin
       } catch (err) {
         console.error("Lỗi kết thúc chat:", err);
