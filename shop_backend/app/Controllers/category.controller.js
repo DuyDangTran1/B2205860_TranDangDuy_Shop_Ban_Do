@@ -55,7 +55,7 @@ exports.delete = async (req, res, next) => {
     return res.send("Xóa thành công");
   } catch (error) {
     return next(
-      new ApiError(500, "Đã có lỗi xảy ra trong quá trình xóa dữ liệu")
+      new ApiError(500, "Đã có lỗi xảy ra trong quá trình xóa dữ liệu"),
     );
   }
 };
@@ -67,7 +67,28 @@ exports.getAllCategories = async (req, res, next) => {
     return res.json({ categories: categories });
   } catch (error) {
     return next(
-      new ApiError(500, "Đã có lỗi xảy ra trong quá trình lấy dữ liệu")
+      new ApiError(500, "Đã có lỗi xảy ra trong quá trình lấy dữ liệu"),
+    );
+  }
+};
+
+exports.getCategoriesTree = async (req, res, next) => {
+  if (!req.params.slug) return next(new ApiError(400, "Thiếu dữ liệu"));
+
+  const slug = req.params.slug;
+
+  try {
+    const category_service = new CategoryService(MongoDB.client);
+    const root = await category_service.getRootAncestor(slug);
+    if (!root) return next(new ApiError(404, "Không tìm thấy gốc"));
+
+    const tree = await category_service.getCategoryTree(root);
+
+    return res.json({ tree: tree });
+  } catch (error) {
+    console.log(error);
+    return next(
+      new ApiError(500, " Đã có lỗi xảy ra trong quá trình lấy dữ liệu"),
     );
   }
 };
