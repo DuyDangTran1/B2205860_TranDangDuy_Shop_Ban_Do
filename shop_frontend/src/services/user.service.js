@@ -1,22 +1,26 @@
 import createPublicApiClient from "./publicApi.service";
-import createPrivateApiClient from "./privateApi.service";
 
 class User {
   constructor(baseUrl = "/api/user") {
-    const accessToken = localStorage.getItem("accessToken");
     this.publicApi = createPublicApiClient(baseUrl);
-    this.privateApi = createPrivateApiClient(baseUrl, accessToken);
   }
 
   register = async (data) =>
-    (await this.publicApi.post("/user/register", data)).data;
-  login = async (data) => await this.publicApi.post("/user/login", data).data;
-  loginWithAccountGoogle = async (data) =>
-    await this.api.post("/user/loginGoogle", data).data;
+    (await this.publicApi.post("/register", data)).data;
+  login = async (data) => (await this.publicApi.post("/login", data)).data;
+  loginWithAccountGoogle = async (data) => {};
 
   changePassword = async (data) => {};
 
   changeInformationUser = async (data) => {};
+
+  me = async (accessToken) => {
+    return (
+      await this.publicApi.get("/me", {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+    ).data;
+  };
 
   existEmail = async (email) => {
     return (
@@ -26,3 +30,5 @@ class User {
     ).data;
   };
 }
+
+export default new User();

@@ -5,6 +5,7 @@ const commonConfig = {
     "Content-Type": "application/json",
     Accept: "application/json",
   },
+  withCredentials: true,
 };
 
-export default (baseUrl) => axios.create({ baseURL, ...commonConfig });
+export default (baseURL) => axios.create({ baseURL, ...commonConfig });
