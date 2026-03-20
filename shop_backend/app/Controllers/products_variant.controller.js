@@ -27,7 +27,7 @@ exports.create = async (req, res, next) => {
     return res.send("Thêm dữ liệu thành công");
   } catch (error) {
     return next(
-      new ApiError(500, "Đã có lỗi xảy ra trong quá trình thêm sản phẩm")
+      new ApiError(500, "Đã có lỗi xảy ra trong quá trình thêm sản phẩm"),
     );
   }
 };
@@ -41,7 +41,7 @@ exports.update = async (req, res, next) => {
     const variant = await product_variant.findVariant(
       product_id,
       color_id,
-      size_id
+      size_id,
     );
     if (!variant)
       return next(new ApiError(404, "Không tìm thấy dữ liệu cần cập nhật"));
@@ -77,7 +77,7 @@ exports.delete = async (req, res, next) => {
     const variant = await product_variant.findVariant(
       product_id,
       size_id,
-      color_id
+      color_id,
     );
     if (!variant)
       return next(new ApiError(404, "Không tìm thấy dữ liệu cần xóa"));
