@@ -1,6 +1,4 @@
 <script>
-import { auth } from "../firebase";
-import { RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth";
 import {
   validateEmail,
   validatePhone,
@@ -18,8 +16,7 @@ export default {
         password: "",
         phone: "",
         confirm_password: "",
-        term_and_condition: false,
-        tokenSMS: "",
+        terms_and_condition: false,
       },
 
       err: {
@@ -30,8 +27,7 @@ export default {
         err_res: "",
       },
       isShowPass: false,
-      otpCode: "",
-      isSent: false,
+      showToast: false,
     };
   },
 
@@ -50,57 +46,33 @@ export default {
       );
     },
 
-    initRecaptcha() {
-      if (!window.recaptchaVerifier) {
-        window.recaptchaVerifier = new RecaptchaVerifier(
-          auth,
-          "recaptcha-container",
-          {
-            size: "invisible",
-          },
-        );
-      }
-    },
-
-    async verifyOTP() {
-      try {
-        const result = await window.confirmationResult.confirm(this.otpCode);
-        const idToken = await result.user.getIdToken();
-
-        const registerData = {
-          ...this.user,
-          tokenSMS: idToken,
-        };
-
-        const user = new UserService();
-        const response = await user.register(registerData);
-      } catch (error) {
-        this.err.err_res = "Mã OTP không đúng hoặc đã hết hạn!";
-      }
-    },
-
     async handleRegister() {
       this.handleInformationUser();
       const hasError = Object.values(this.err).some((e) => e !== "");
       if (hasError) return;
 
       try {
-        this.initRecaptcha();
-        const appVerifier = window.recaptchaVerifier;
+        console.log(this.user);
+        const result = await UserService.register(this.user);
 
-        const formatPhone = "+84" + this.user.phone.substring(1);
-
-        window.confirmationResult = await signInWithPhoneNumber(
-          auth,
-          formatPhone,
-          appVerifier,
-        );
-
-        this.isSent = true;
-        this.err.err_res = "";
-        alert("Mã OTP đã gửi về máy, check điện thoại nhe ní!");
+        this.showToast = true;
+        setTimeout(() => {
+          this.showToast = false;
+        }, 1000);
       } catch (error) {
-        this.err.err_res = "Lỗi gửi SMS: " + error.message;
+        const serverRes = error.response;
+
+        if (serverRes && serverRes.status === 409) {
+          const serverErrors = serverRes.data.message;
+          this.err.err_email = serverErrors.err_email
+            ? serverErrors.err_email
+            : this.err.err_email;
+          this.err.err_phone = serverErrors.err_phone
+            ? serverErrors.err_phone
+            : this.err.err_phone;
+        } else {
+          this.err.err_res = serverRes?.data?.message || "Đã có lỗi xảy ra!";
+        }
       }
     },
   },
@@ -113,123 +85,98 @@ export default {
         <div class="login-card p-5 rounded-4">
           <h3 class="text-center mb-4">Đăng Ký</h3>
           <form @submit.prevent="handleRegister">
-            <div id="recaptcha-container"></div>
-
-            <div v-if="!isSent">
-              <div class="mb-4">
-                <label for="email" class="fw-bold mb-1">Email:</label>
-                <input
-                  type="email"
-                  class="form-control border-0"
-                  v-model="user.email"
-                />
-                <p v-if="err.err_email" class="err">{{ err.err_email }}</p>
-              </div>
-
-              <div class="mb-4">
-                <label for="phone" class="fw-bold mb-1">Số điện thoại:</label>
-                <input
-                  type="text"
-                  class="form-control border-0"
-                  v-model="user.phone"
-                />
-                <p v-if="err.err_phone" class="err">{{ err.err_phone }}</p>
-              </div>
-
-              <div class="mb-4 wrap-input-pass">
-                <label for="password" class="mt-1 fw-bold">Mật khẩu:</label>
-                <div class="input-pass">
-                  <input
-                    :type="!isShowPass ? 'password' : 'text'"
-                    class="form-control border-0"
-                    v-model="user.password"
-                  />
-                  <i
-                    :class="
-                      isShowPass ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'
-                    "
-                    @click="handleShowPassword"
-                  ></i>
-                </div>
-                <p v-if="err.err_password" class="err">
-                  {{ err.err_password }}
-                </p>
-              </div>
-
-              <div class="mb-4 wrap-input-pass">
-                <label for="confirm-password" class="mt-1 fw-bold"
-                  >Xác nhận mật khẩu:</label
-                >
-                <div class="input-pass">
-                  <input
-                    :type="!isShowPass ? 'password' : 'text'"
-                    class="form-control border-0"
-                    v-model="user.confirm_password"
-                  />
-                  <i
-                    :class="
-                      isShowPass ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'
-                    "
-                    @click="handleShowPassword"
-                  ></i>
-                </div>
-                <p v-if="err.err_confirm_password" class="err">
-                  {{ err.err_confirm_password }}
-                </p>
-              </div>
-
-              <div class="mb-4 d-flex justify-content-between">
-                <div class="form-check">
-                  <input
-                    type="checkbox"
-                    class="form-check-input"
-                    id="remember"
-                    v-model="user.term_and_condition"
-                  />
-                  <label for="remember"><a href="#">Điều khoản</a></label>
-                </div>
-                <p>Bạn đã có tài khoản? <a href="#">Đăng nhập ngay</a></p>
-              </div>
-
-              <div class="d-grid mb-1">
-                <button
-                  type="submit"
-                  class="btn btn-primary btn-login rounded-3 fw-semibold"
-                  :disabled="!user.term_and_condition"
-                >
-                  Đăng Kí Tài Khoản
-                </button>
-              </div>
+            <div class="mb-4">
+              <label for="email" class="fw-bold mb-1">Email:</label>
+              <input
+                id="email"
+                type="email"
+                class="form-control border-0"
+                v-model="user.email"
+              />
+              <p v-if="err.err_email" class="err">{{ err.err_email }}</p>
             </div>
 
-            <div v-else class="text-center animate__animated animate__fadeIn">
-              <div class="mb-4">
-                <label class="fw-bold mb-2"
-                  >Mã OTP đã gửi đến {{ user.phone }}</label
-                >
+            <div class="mb-4">
+              <label for="phone" class="fw-bold mb-1">Số điện thoại:</label>
+              <input
+                id="phone"
+                type="text"
+                class="form-control border-0"
+                v-model="user.phone"
+              />
+              <p v-if="err.err_phone" class="err">{{ err.err_phone }}</p>
+            </div>
+
+            <div class="mb-4 wrap-input-pass">
+              <label for="password" class="mt-1 fw-bold">Mật khẩu:</label>
+              <div class="input-pass">
                 <input
-                  type="text"
-                  class="form-control border-0 text-center fw-bold fs-4"
-                  placeholder="Nhập 6 số"
-                  v-model="otpCode"
+                  id="password"
+                  :type="!isShowPass ? 'password' : 'text'"
+                  class="form-control border-0"
+                  v-model="user.password"
                 />
+                <i
+                  :class="
+                    isShowPass ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'
+                  "
+                  @click="handleShowPassword"
+                ></i>
               </div>
-              <div class="d-grid gap-2">
-                <button
-                  type="button"
-                  @click="verifyOTP"
-                  class="btn btn-success rounded-3 fw-semibold"
-                >
-                  Xác nhận và Hoàn tất Đăng ký
-                </button>
-                <button
-                  type="button"
-                  @click="isSent = false"
-                  class="btn btn-outline-light btn-sm"
-                >
-                  Quay lại sửa thông tin
-                </button>
+              <p v-if="err.err_password" class="err">
+                {{ err.err_password }}
+              </p>
+            </div>
+
+            <div class="mb-4 wrap-input-pass">
+              <label for="confirm-password" class="mt-1 fw-bold"
+                >Xác nhận mật khẩu:</label
+              >
+              <div class="input-pass">
+                <input
+                  id="confirm-password"
+                  :type="!isShowPass ? 'password' : 'text'"
+                  class="form-control border-0"
+                  v-model="user.confirm_password"
+                />
+                <i
+                  :class="
+                    isShowPass ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'
+                  "
+                  @click="handleShowPassword"
+                ></i>
               </div>
+              <p v-if="err.err_confirm_password" class="err">
+                {{ err.err_confirm_password }}
+              </p>
+            </div>
+
+            <div class="mb-4 d-flex justify-content-between">
+              <div class="form-check">
+                <input
+                  type="checkbox"
+                  class="form-check-input"
+                  id="remember"
+                  v-model="user.terms_and_condition"
+                />
+                <label for="remember"
+                  ><a class="fw-bold" href="#">Điều khoản</a></label
+                >
+              </div>
+              <p>
+                Bạn đã có tài khoản?
+                <a class="fw-bold" href="#">Đăng nhập ngay</a>
+              </p>
+            </div>
+
+            <div class="d-grid mb-1">
+              <button
+                type="submit"
+                class="btn btn-primary btn-login rounded-3 fw-semibold"
+                :disabled="!user.terms_and_condition"
+              >
+                Đăng Kí Tài Khoản
+              </button>
             </div>
 
             <div
@@ -243,9 +190,16 @@ export default {
         </div>
       </div>
     </div>
+    <div v-if="showToast" class="toast-container-center">
+      <div class="custom-toast animate__animated animate__zoomIn">
+        <div class="toast-body">
+          <h5>Đăng ký thành công!</h5>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
-<style>
+<style scoped>
 .login-container {
   background: url(https://i.pinimg.com/1200x/1d/86/0e/1d860e6c01182b322b944e10a2fce827.jpg)
     no-repeat center center fixed;
@@ -297,7 +251,43 @@ i:hover {
   margin-top: 4px;
   font-weight: 500;
 }
-.grecaptcha-badge {
-  visibility: hidden !important;
+
+.toast-container-center {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 9999;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.custom-toast {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  /* Chỉnh width và height ở đây nè ní */
+  width: 450px;
+  height: 250px;
+  /* Dùng flexbox để canh chữ vào giữa hộp cho chuẩn */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+
+  border-radius: 30px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(40, 167, 69, 0.3);
+}
+
+.toast-body h5 {
+  font-size: 2rem; /* Cho chữ to lên tương ứng với cái hộp */
+  color: #533422;
+  font-weight: bold;
+}
+
+.toast-body p {
+  color: #666;
+  margin-bottom: 0;
 }
 </style>
