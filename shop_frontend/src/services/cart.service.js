@@ -5,42 +5,24 @@ class Cart {
     this.publicAPI = createPublicApiClient(baseURL);
   }
 
-  async addProduct(data, accessToken) {
-    return (
-      await this.publicAPI.post("/", data, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      })
-    ).data;
+  async addProduct(data) {
+    return (await this.publicAPI.post("/", data)).data;
   }
 
-  async getCart(accessToken) {
-    return (
-      await this.publicAPI.get("/", {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      })
-    ).data;
+  async getCart() {
+    return (await this.publicAPI.get("/")).data;
   }
 
-  async update(data, accessToken) {
-    return (
-      await this.publicAPI.put("/", data, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      })
-    ).data;
+  async update(data) {
+    return (await this.publicAPI.put("/", data)).data;
+  }
+  async deleteCart(variant_id) {
+    return (await this.publicAPI.delete(`/delete?variant_id=${variant_id}`))
+      .data;
   }
 
-  async deleteCart(variant_id, accessToken) {
-    return (
-      await this.publicAPI.delete(`/delete?variant_id=${variant_id}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      })
-    ).data;
-  }
-
-  async deleteAll(accessToken) {
-    return await this.publicAPI.delete("/", {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    }).data;
+  async deleteAll() {
+    return (await this.publicAPI.delete("/")).data;
   }
 }
 

@@ -1,6 +1,12 @@
 <script>
 import userService from "@/services/user.service";
+import { auth, googleProvider } from "@/configs/firebase.config";
+import { signInWithPopup } from "firebase/auth";
+import Loading from "@/components/Loading.vue";
 export default {
+  components: {
+    Loading,
+  },
   data() {
     return {
       account: {
@@ -8,6 +14,7 @@ export default {
         password: "",
         remember: false,
       },
+      loading: false,
 
       error: {
         error_email: "",
@@ -42,7 +49,6 @@ export default {
 
       return "";
     },
-
     async handleLogin() {
       this.error.error_email = this.checkEmail(this.account.email);
       this.error.error_password = this.checkPassword(this.account.password);
@@ -60,6 +66,40 @@ export default {
           error.response.data.message || "Đã có lỗi xảy ra";
       }
     },
+    async handleLoginGoogle() {
+      // Xóa thông báo lỗi cũ cho UI sạch sẽ
+      this.error.error_res = "";
+
+      try {
+        //ÉP GOOGLE LUÔN HIỂN THỊ BẢNG CHỌN TÀI KHOẢN
+        googleProvider.setCustomParameters({
+          prompt: "select_account",
+        });
+
+        // Mở popup chọn Gmail
+        const result = await signInWithPopup(auth, googleProvider);
+        const idToken = await result.user.getIdToken();
+        this.loading = true;
+        // Gửi token lên cho Backend xử lý
+        const res = await userService.loginGoogle({ token: idToken });
+
+        // Lưu session và chuyển hướng
+        sessionStorage.setItem("accessToken", res.accessToken);
+        sessionStorage.setItem("userName", res.name);
+        this.$router.push({ name: "Home" });
+      } catch (error) {
+        console.error("Lỗi login Google:", error);
+
+        // Nếu Backend trả về lỗi, hiển thị nó ra
+        if (error.response && error.response.data) {
+          this.error.error_res = error.response.data.message;
+        } else {
+          this.error.error_res = "Bạn đã đóng cửa sổ hoặc đăng nhập thất bại!";
+        }
+      } finally {
+        this.loading = false;
+      }
+    },
   },
 
   mounted() {
@@ -73,6 +113,7 @@ export default {
 </script>
 <template>
   <div class="container-fluid text-dark vh-100 login-container">
+    <Loading :isLoading="loading" />
     <div class="row h-100 justify-content-center align-items-center">
       <div class="col-lg-4 col-md-8">
         <div class="login-card p-5 rounded-4">
@@ -130,6 +171,7 @@ export default {
               <button
                 type="submit"
                 class="btn btn-primary btn-login rounded-3 fw-semibold"
+                @click="handleLogin"
               >
                 Đăng Nhập
               </button>
@@ -139,6 +181,27 @@ export default {
               <a href="#" class="fw-bold">Đăng kí tài khoản</a>
             </p>
           </form>
+
+          <div class="d-flex align-items-center my-3 divider">
+            <hr class="flex-grow-1" />
+            <span class="mx-2 text-white small fw-bold">Hoặc</span>
+            <hr class="flex-grow-1" />
+          </div>
+
+          <div class="d-grid">
+            <button
+              type="button"
+              @click="handleLoginGoogle"
+              class="btn-google rounded-3 fw-semibold d-flex align-items-center justify-content-center w-100 py-2"
+            >
+              <img
+                src="../../public/images/avatar_default/d6f2a6923ee423f1c45e97bb9c9862a0.jpg"
+                width="18"
+                class="me-2"
+              />
+              Tiếp tục với Google
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -177,12 +240,32 @@ i {
   color: rgba(0, 0, 0, 0.7);
 }
 
-.btn-login {
-  transition: 0.3s;
+.divider hr {
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.5);
+  opacity: 1;
 }
 
-.btn-login:hover {
+.btn-google {
+  background: #ffffff;
+  color: #333333;
+  border: none;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.btn-google:hover {
+  background: #f1f1f1;
   transform: translateY(-2px);
-  box-shadow: 0px 5px 15px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.login-card a {
+  color: #0d6efd !important;
+  text-decoration: none;
+}
+
+.login-card a:hover {
+  text-decoration: underline !important;
 }
 </style>

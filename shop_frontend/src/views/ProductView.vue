@@ -4,11 +4,12 @@ import myfooter from "@/components/footer.vue";
 import productService from "@/services/product.service";
 import categoryService from "@/services/category.service";
 import { RouterLink } from "vue-router";
-import cartService from "@/services/cart.service";
+import Loading from "@/components/Loading.vue";
 export default {
   components: {
     myfooter,
     myheader,
+    Loading,
   },
 
   data() {
@@ -16,7 +17,7 @@ export default {
       categoryTree: {},
       rootName: "",
       products: {},
-      isLoading: false,
+      isLoading: true,
       level2: [],
       level3: {},
       activeCategory: null,
@@ -31,56 +32,12 @@ export default {
       activeBrand: [],
       isShowTick: null,
       query: "",
-      select_product: null,
-      select_color: null,
-      select_size: null,
-      buy_quantity: 1,
-      showOption: true,
     };
   },
 
   computed: {
     currentPage() {
       return parseInt(this.$route.query.page) || 1;
-    },
-    uniqueColor() {
-      if (
-        this.select_product === null ||
-        Object.keys(this.select_product)?.length === 0
-      )
-        return [];
-
-      return [
-        ...new Set(
-          this.select_product["variants"]?.map((value) => value.color_name),
-        ),
-      ];
-    },
-
-    uniqueSize() {
-      if (!this.select_product?.variants || !this.select_color) return [];
-
-      const array_size = this.select_product["variants"]?.filter(
-        (value) => value["color_name"] === this.select_color,
-      );
-
-      return [...new Set(array_size.map((value) => value.size_name))];
-    },
-
-    selectVariant() {
-      if (
-        !this.select_product?.variants ||
-        !this.select_color ||
-        !this.select_size
-      ) {
-        return null;
-      }
-
-      return this.select_product.variants.find(
-        (v) =>
-          v.color_name === this.select_color &&
-          v.size_name === this.select_size,
-      );
     },
   },
 
@@ -117,132 +74,93 @@ export default {
       return queryArr.join("&");
     },
 
-    async loadProduct() {
+    async loadCategoryData() {
       try {
         const slug = this.$route.params.slug;
-        this.query = this.buildQuery();
-        // console.log(this.query);
-        const [resProducts, res] = await Promise.all([
-          productService.getProductBySlug(slug, this.query),
-          categoryService.getCategoryTree(slug),
-        ]);
-
-        this.products = resProducts;
+        const res = await categoryService.getCategoryTree(slug);
         if (res && res.tree && res.tree.length > 0) {
           const rootData = res.tree[0];
           const allChildren = rootData.Tree;
-
-          this.rootName = rootData.category_name;
-
-          this.level2 = allChildren.filter(
-            (category) => category.parent_name === this.rootName,
+          allChildren.sort((a, b) =>
+            a.category_name.localeCompare(b.category_name),
           );
-
+          this.rootName = rootData.category_name;
+          this.level2 = allChildren.filter(
+            (c) => c.parent_name === this.rootName,
+          );
           this.level3 = this.level2.reduce((acc, parent) => {
             acc[parent.category_name] = allChildren.filter(
-              (child) => child.parent_name === parent.category_name,
+              (c) => c.parent_name === parent.category_name,
             );
             return acc;
           }, {});
-
           this.level3["Danh mục sale"] = this.discount_list;
         }
-
-        // console.log(this.level2);
-        console.log(this.products);
-        // console.log(this.level3);
-        this.isLoading = true;
       } catch (error) {
-        this.isLoading = true;
-        console.log(error);
+        console.error("Lỗi load cây danh mục:", error);
       }
     },
 
-    selectProduct(item) {
-      this.select_product = item;
-      if (
-        item.variants &&
-        item.variants.length > 0 &&
-        this.select_color === null
-      ) {
-        this.select_color = item.variants[0].color_name;
-        this.select_size = item.variants[0].size_name;
-      }
-
-      this.showOption = true;
-      this.buy_quantity = 1;
+    calculateSalePrice(basePrice, discount) {
+      if (!discount || discount <= 0) return basePrice;
+      return basePrice - (basePrice * discount) / 100;
     },
-
-    handelChangeColor(color) {
-      this.select_color = color;
-      const match = this.select_product.variants?.find(
-        (element) =>
-          element.color_name === this.select_color &&
-          element.size_name === this.select_size,
-      );
-
-      if (!match) return (this.select_size = this.uniqueSize[0]);
+    renderPrice(val) {
+      return val.toLocaleString("vi-VN") + "đ";
     },
-
-    handelClose() {
-      this.showOption = false;
-      this.buy_quantity = 1;
-      this.select_product = null;
-      this.select_color = null;
-      this.select_size = null;
-    },
-
-    async handleAddToCart() {
-      const accessToken = sessionStorage.getItem("accessToken");
-      if (!accessToken) return this.$router.push("/login");
-
+    async loadOnlyProducts() {
       try {
-        const res = await cartService.addProduct(
-          {
-            variant_id: this.selectVariant._id,
-            quantity: this.buy_quantity,
-          },
-          accessToken,
+        this.isLoading = true;
+        const slug = this.$route.params.slug;
+        this.query = this.buildQuery();
+        const resProducts = await productService.getProductBySlug(
+          slug,
+          this.query,
         );
+        this.products = resProducts;
       } catch (error) {
-        console.log(error);
+        console.error("Lỗi lọc sản phẩm:", error);
+      } finally {
+        this.isLoading = false;
       }
     },
   },
   mounted() {
-    this.loadProduct();
+    this.loadCategoryData();
+    this.loadOnlyProducts();
   },
 
   watch: {
     "$route.params.slug": function () {
-      this.loadProduct();
+      this.loadCategoryData();
+      this.loadOnlyProducts();
     },
     activeOption: function () {
-      this.loadProduct();
+      this.loadOnlyProducts();
     },
     about_price: function (about_price) {
       if (about_price.length > 1) {
         this.about_price = [about_price[about_price.length - 1]];
         return;
       }
-      this.loadProduct();
+      this.loadOnlyProducts();
     },
     currentPage: function () {
-      this.loadProduct();
+      this.loadOnlyProducts();
     },
     activeBrand: function (brands) {
       if (brands.length > 1) {
         this.activeBrand = [brands[brands.length - 1]];
         return;
       }
-      // this.isLoading = false;
-      this.loadProduct();
+      this.loadOnlyProducts();
     },
   },
 };
 </script>
 
 <template>
+  <loading :isLoading="isLoading"></loading>
   <div class="container-fluid p-0">
     <myheader></myheader>
     <div class="banner">
@@ -253,9 +171,8 @@ export default {
       />
     </div>
   </div>
-  <div v-if="!isLoading">... Đang load</div>
 
-  <div v-if="isLoading">
+  <div v-if="!isLoading">
     <div class="container-fluid p-0">
       <div class="container-fluid px-lg-5 mt-5">
         <div class="row g-4">
@@ -287,7 +204,15 @@ export default {
                       v-for="category in value"
                       :key="category._id"
                     >
-                      {{ category.category_name }}
+                      <router-link
+                        class="router-link"
+                        :to="{
+                          name: 'category',
+                          params: { slug: category.slug },
+                        }"
+                      >
+                        {{ category.category_name }}
+                      </router-link>
                     </li>
                   </ul>
                 </li>
@@ -404,51 +329,89 @@ export default {
                 v-for="item in products.products"
                 :key="item._id"
               >
-                <div class="product_item rounded-1 pb-2 mb-4">
-                  <img
-                    :src="'http://localhost:3000/' + item.image_url"
-                    alt=""
-                    class="w-100"
-                  />
-                  <h5 class="mt-2 mb-1 text-center px-1 text-truncate">
-                    {{ item.product_name }}
-                  </h5>
-
-                  <div class="d-flex justify-content-start px-2 mt-2">
-                    <div v-if="item.rating > 0" class="rating">
-                      <i class="fa-solid fa-star"></i>
-                      <span>4.9</span>
+                <router-link
+                  class="router-link"
+                  :to="{ name: 'Detail', params: { id: item._id } }"
+                >
+                  <div class="product_item rounded-1 pb-2 mb-4">
+                    <div v-if="item.discount > 0" class="discount">
+                      <span class="fw-bold">-{{ item.discount }}%</span>
                     </div>
 
-                    <div v-if="item.rating == 0" class="tag-new">
-                      <span>Mới</span>
-                    </div>
-                  </div>
+                    <img
+                      :src="'http://localhost:3000/' + item.image_url"
+                      alt=""
+                      class="w-100"
+                    />
 
-                  <div class="price_and_number_sell mt-2 px-2 mb-4">
-                    <span class="price fw-bold" style="font-size: 1.2rem"
-                      >{{ item.base_price.toLocaleString("vi-VN") }}đ</span
+                    <h5 class="mt-2 mb-1 text-center px-1 text-truncate">
+                      {{ item.product_name }}
+                    </h5>
+
+                    <div
+                      class="d-flex justify-content-between align-items-center px-2 mt-2"
                     >
-                    <span
-                      class="number_sell text-muted"
-                      style="font-size: 0.9rem"
-                      >Đã bán: {{ item.count_sell }}
-                    </span>
-                  </div>
+                      <div
+                        v-if="item.rating > 0"
+                        class="rating d-flex align-items-center gap-1"
+                      >
+                        <i
+                          class="fa-solid fa-star text-warning"
+                          style="font-size: 0.75rem"
+                        ></i>
+                        <span
+                          class="fw-bold text-dark"
+                          style="font-size: 0.85rem"
+                        >
+                          {{ item.rating.toFixed(1) }}
+                        </span>
+                      </div>
 
-                  <div class="add-cart text-center mb-4">
-                    <button type="button" @click="selectProduct(item)">
-                      Thêm vào giỏ hàng
-                    </button>
-                  </div>
+                      <div v-else class="tag-new">
+                        <span>Mới</span>
+                      </div>
+                    </div>
 
-                  <div
-                    v-if="item.discount != 0 && item.discount > 0"
-                    class="discount"
-                  >
-                    <span class="fw-bold">{{ item.discount }}%</span>
+                    <div
+                      class="price_and_number_sell mt-2 px-2 d-flex align-items-center justify-content-between"
+                    >
+                      <div class="d-flex align-items-center flex-wrap">
+                        <span
+                          class="price fw-bold me-2"
+                          style="font-size: 1.1rem"
+                        >
+                          {{
+                            renderPrice(
+                              calculateSalePrice(
+                                item.base_price,
+                                item.discount,
+                              ),
+                            )
+                          }}
+                        </span>
+
+                        <span
+                          v-if="item.discount > 0"
+                          class="text-muted text-decoration-line-through small"
+                          style="font-size: 0.8rem"
+                        >
+                          {{ renderPrice(item.base_price) }}
+                        </span>
+                      </div>
+
+                      <span
+                        class="number_sell text-muted"
+                        style="font-size: 0.75rem"
+                      >
+                        Đã bán: {{ item.count_sell }}
+                      </span>
+                    </div>
+
+                    <div class="add-cart text-center mb-2 mt-2">
+                      <button type="button">Thêm vào giỏ hàng</button>
+                    </div>
                   </div>
-                </div>
+                </router-link>
               </div>
             </div>
 
@@ -509,126 +472,6 @@ export default {
                 </li>
               </ul>
             </nav>
-
-            <div
-              class="drawer-overlay"
-              v-if="showOption"
-              @click="showOption = false"
-            ></div>
-
-            <transition name="slide-up">
-              <div
-                class="quick-select-drawer"
-                v-if="showOption && select_product"
-              >
-                <div v-if="selectVariant" class="drawer-content">
-                  <div class="d-flex p-3 border-bottom">
-                    <div class="variant-img-wrapper">
-                      <img
-                        :src="
-                          'http://localhost:3000/' +
-                          (selectVariant?.image_url || select_product.image_url)
-                        "
-                        class="img-fluid rounded border"
-                      />
-                    </div>
-                    <div class="ms-3 flex-grow-1">
-                      <h6
-                        class="fw-bold mb-1 text-truncate"
-                        style="max-width: 250px"
-                      >
-                        {{ select_product.product_name }}
-                      </h6>
-                      <div class="price text-danger fw-bold fs-5">
-                        {{
-                          (
-                            selectVariant?.price || select_product.base_price
-                          ).toLocaleString()
-                        }}đ
-                      </div>
-                      <div class="small text-muted">
-                        Kho: {{ selectVariant?.quantity || 0 }}
-                      </div>
-                    </div>
-                    <button class="btn-close" @click="handelClose()"></button>
-                  </div>
-
-                  <div class="p-3 drawer-body">
-                    <div class="mb-3">
-                      <label class="fw-bold small mb-2">MÀU SẮC:</label>
-                      <div class="d-flex flex-wrap gap-2">
-                        <button
-                          v-for="color in uniqueColor"
-                          :key="color"
-                          class="btn-option"
-                          :class="{ active: select_color === color }"
-                          @click="handelChangeColor(color)"
-                        >
-                          {{ color }}
-                        </button>
-                      </div>
-                    </div>
-
-                    <div class="mb-3">
-                      <label class="fw-bold small mb-2">KÍCH THƯỚC:</label>
-                      <div class="d-flex flex-wrap gap-2">
-                        <button
-                          v-for="size in uniqueSize"
-                          :key="size"
-                          class="btn-option"
-                          :class="{ active: select_size === size }"
-                          @click="select_size = size"
-                        >
-                          {{ size }}
-                        </button>
-                      </div>
-                    </div>
-
-                    <div
-                      class="d-flex justify-content-between align-items-center mt-4"
-                    >
-                      <label class="fw-bold small">SỐ LƯỢNG:</label>
-                      <div class="qty-selector d-flex align-items-center">
-                        <button @click="buy_quantity > 1 && buy_quantity--">
-                          -
-                        </button>
-                        <input
-                          type="number"
-                          v-model.number="buy_quantity"
-                          readonly
-                        />
-                        <button
-                          @click="
-                            buy_quantity < (selectVariant?.quantity || 0) &&
-                            buy_quantity++
-                          "
-                        >
-                          +
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div class="p-3">
-                    <button
-                      class="btn-confirm w-100"
-                      :disabled="!selectVariant || selectVariant.quantity === 0"
-                      @click="handleAddToCart"
-                    >
-                      {{
-                        selectVariant?.quantity === 0
-                          ? "HẾT HÀNG"
-                          : "THÊM VÀO GIỎ HÀNG"
-                      }}
-                    </button>
-                  </div>
-                </div>
-
-                <div v-else class="p-5 text-center">
-                  <p>Sản phẩm đang được cập nhật...</p>
-                </div>
-              </div>
-            </transition>
           </div>
         </div>
       </div>
@@ -638,6 +481,11 @@ export default {
   </div>
 </template>
 <style scoped>
+.router-link {
+  text-decoration: none;
+  color: #533422;
+}
+
 .banner img {
   height: 100vh;
 }
@@ -801,12 +649,22 @@ export default {
 }
 
 .discount {
-  padding: 0 2px;
+  padding: 3px 8px;
   position: absolute;
   top: 0;
   right: 0;
-  color: #f00;
-  background-color: rgb(251, 196, 196);
+  color: #fff;
+  background-color: #f00;
+  font-weight: bold;
+  font-size: 0.8rem;
+  border-bottom-left-radius: 12px;
+  box-shadow: -2px 2px 5px rgba(0, 0, 0, 0.1);
+  z-index: 5;
+}
+
+.bg-danger-subtle {
+  background-color: #fff1f0 !important;
+  border: 1px solid #ffa39e;
 }
 
 .pagination .page-link {
@@ -850,37 +708,12 @@ export default {
   transform: transform 0.1s translate(-50%, 100%);
 }
 
-/* Lớp nền đen mờ */
-/* .drawer-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 2000;
-} */
-
-.quick-select-drawer {
-  position: fixed;
-  bottom: 0;
-  left: 0%;
-  width: 100%;
-  transform: translateX(-50%);
-  width: 100%;
-  max-width: 500px;
-  background: #fff;
-  border-radius: 16px 16px 0 0;
-  z-index: 2001;
-}
-
 .variant-img-wrapper img {
   width: 80px;
   height: 80px;
   object-fit: cover;
 }
 
-/* Nút chọn option */
 .btn-option {
   padding: 6px 16px;
   border: 1px solid #ddd;
@@ -895,7 +728,6 @@ export default {
   background: #fdf8f5;
 }
 
-/* Bộ chọn số lượng */
 .qty-selector {
   border: 1px solid #ddd;
   border-radius: 4px;

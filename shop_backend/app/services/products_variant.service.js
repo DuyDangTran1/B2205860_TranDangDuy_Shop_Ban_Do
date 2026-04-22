@@ -9,15 +9,9 @@ class ProductVariant {
       product_id: ObjectId.isValid(payload.product_id)
         ? new ObjectId(payload.product_id)
         : null,
-      size_id: ObjectId.isValid(payload.size_id)
-        ? new ObjectId(payload.size_id)
-        : null,
-      color_id: ObjectId.isValid(payload.color_id)
-        ? new ObjectId(payload.color_id)
-        : null,
-      quantity: Number(payload.quantity),
+      size_name: payload.size_name,
+      color_name: payload.color_name,
       image_url: payload.image_url,
-      created: new Date(),
     };
 
     Object.keys(product_variant).forEach(
@@ -30,26 +24,16 @@ class ProductVariant {
 
   async create(payload) {
     const product_variant = this.extractProductVariantData(payload);
-    const quantity_product_variant = product_variant.quantity || 0;
-    delete product_variant.quantity;
-
-    return await this.Product_variant.findOneAndUpdate(
-      {
-        product_id: product_variant.product_id,
-        color_id: product_variant.color_id,
-        size_id: product_variant.size_id,
-      },
-      { $set: product_variant, $inc: { quantity: quantity_product_variant } },
-      { returnDocument: "after", upsert: true },
-    );
+    product_variant.quantity = 0;
+    product_variant.sold_count = 0;
+    product_variant.created = new Date();
+    return await this.Product_variant.insertOne(product_variant);
   }
 
-  async update(payload) {
+  async update(id, payload) {
     const update = this.extractProductVariantData(payload);
     const filter = {
-      product_id: update.product_id,
-      color_id: update.color_id,
-      size_id: update.size_id,
+      _id: ObjectId.isValid(id) ? new ObjectId(id) : null,
     };
     return await this.Product_variant.findOneAndUpdate(
       filter,
@@ -58,29 +42,108 @@ class ProductVariant {
     );
   }
 
-  async delete(product_id, color_id, size_id) {
+  async delete(id) {
     return await this.Product_variant.findOneAndDelete({
-      product_id: ObjectId.isValid(product_id)
-        ? new ObjectId(product_id)
-        : null,
-      color_id: ObjectId.isValid(color_id) ? new ObjectId(color_id) : null,
-      size_id: ObjectId.isValid(size_id) ? new ObjectId(size_id) : null,
+      _id: ObjectId.isValid(id) ? new ObjectId(id) : null,
     });
   }
 
-  async findVariant(product_id, color_id, size_id) {
+  async findVariant(id) {
+    return await this.Product_variant.findOne({
+      _id: ObjectId.isValid(id) ? new ObjectId(id) : null,
+    });
+  }
+
+  async findVariantByInformation(product_id, color_name, size_name) {
     return await this.Product_variant.findOne({
       product_id: ObjectId.isValid(product_id)
         ? new ObjectId(product_id)
         : null,
-      color_id: ObjectId.isValid(color_id) ? new ObjectId(color_id) : null,
-      size_id: ObjectId.isValid(size_id) ? new ObjectId(size_id) : null,
+      color_name: color_name,
+      size_name: size_name,
     });
   }
 
   async findVariantById(id) {
     return await this.Product_variant.findOne({
       _id: ObjectId.isValid(id) ? new ObjectId(id) : null,
+    });
+  }
+
+  async adjustQuantity(id, quantity) {
+    return await this.Product_variant.findOneAndUpdate(
+      { _id: ObjectId.isValid(id) ? new ObjectId(id) : null },
+      {
+        $inc: { quantity: Number(quantity) },
+      },
+      {
+        returnDocument: "after",
+      },
+    );
+  }
+
+  async incrementSoldCount(variantId, quantity) {
+    return await this.Product_variant.updateOne(
+      { _id: new ObjectId(variantId) },
+      { $inc: { sold_count: Number(quantity) } },
+    );
+  }
+
+  async getVariantsByIds(variantIds) {
+    return await this.Product_variant.find({
+      _id: { $in: variantIds.map((id) => new ObjectId(id)) },
+    }).toArray();
+  }
+
+  async getInventoryStats() {
+    const stats = await this.Product_variant.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalStock: { $sum: "$quantity" },
+          lowStockCount: {
+            $sum: { $cond: [{ $lt: ["$quantity", 10] }, 1, 0] },
+          },
+        },
+      },
+    ]).toArray();
+    return stats[0] || { totalStock: 0, lowStockCount: 0 };
+  }
+
+  async getAllProductInventory() {
+    return await this.Product_variant.aggregate([
+      {
+        $lookup: {
+          from: "Products",
+          localField: "product_id",
+          foreignField: "_id",
+          as: "product_info",
+        },
+      },
+      { $unwind: "$product_info" },
+      {
+        $project: {
+          // Nối chuỗi: Tên SP + Size + Màu
+          full_name: {
+            $concat: [
+              "$product_info.product_name",
+              " - Size: ",
+              { $ifNull: ["$size_name", "N/A"] },
+              " - Màu: ",
+              { $ifNull: ["$color_name", "N/A"] },
+            ],
+          },
+          totalQty: "$quantity",
+          image: "$image_url",
+        },
+      },
+      { $sort: { totalQty: 1 } }, // Hàng ít xếp lên đầu
+    ]).toArray();
+  }
+
+  async deleteByProductId(id) {
+    return this.Product_variant.deleteMany({
+      product_id: ObjectId.isValid(id) ? new ObjectId(id) : null,
     });
   }
 }

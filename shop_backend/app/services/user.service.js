@@ -9,13 +9,13 @@ class User {
     const user = {
       email: payload.email?.trim(),
       phone: payload.phone,
+      type_account: payload.type_account,
       name: payload.name,
       birthday: payload.birthday,
       address: payload.address,
       terms_and_condition: payload.terms_and_condition,
       password: payload.password,
-      url_avatar: payload.url_avatar,
-      created: new Date(),
+      image_url: payload.image_url,
     };
 
     Object.keys(user).forEach(
@@ -27,8 +27,12 @@ class User {
 
   async created(payload) {
     const user = this.extractUserData(payload);
+    user.created = new Date();
     user.chat_mode = "ai";
-    ((user.count_violate = 0), (user.block = false), (user.role = "user"));
+    user.rank = "Đồng";
+    user.count_violate = 0;
+    user.block = false;
+    user.role = "user";
     return await this.User.insertOne(user);
   }
 
@@ -45,11 +49,25 @@ class User {
   }
 
   async getAll() {
-    return await this.User.find().toArray();
+    return await this.User.find().sort({ _id: -1 }).toArray();
+  }
+
+  async updateStatusAccount(id, status) {
+    return await this.User.findOneAndUpdate(
+      { _id: ObjectId.isValid(id) ? new ObjectId(id) : null },
+      { $set: { block: status } },
+      { returnDocument: "after" },
+    );
   }
 
   async find(filter) {
     return await this.User.findOne(filter);
+  }
+
+  async findById(id) {
+    return await this.User.findOne({
+      _id: ObjectId.isValid(id) ? new ObjectId(id) : null,
+    });
   }
 
   async updateLastestMessage(email, lastestProduct) {
@@ -68,8 +86,10 @@ class User {
       filter,
       {
         $set: {
-          current_staff_id: staffId,
-          updated_chat_at: new Date(), // Để biết nhân viên nhận lúc nào
+          current_staff_id: ObjectId.isValid(staffId)
+            ? new ObjectId(staffId)
+            : null,
+          updated_chat_at: new Date(),
         },
       },
       { returnDocument: "after" },
@@ -77,6 +97,9 @@ class User {
   }
 
   async updateChatMode(userId, mode) {
+    console.log(
+      `--- Đang thực hiện updateChatMode cho ID: ${userId} sang Mode: ${mode} ---`,
+    );
     const filter = {
       _id: ObjectId.isValid(userId) ? new ObjectId(userId) : null,
     };
@@ -94,32 +117,66 @@ class User {
     );
   }
 
-  async updateStaffChat(userId, staffId) {
-    const filter = {
-      _id: ObjectId.isValid(userId) ? new ObjectId(userId) : null,
-    };
-    return await this.User.findOneAndUpdate(
-      filter,
-      {
-        $set: {
-          current_staff_id: staffId,
-          updated_chat_at: new Date(),
-        },
-      },
-      { returnDocument: "after" },
-    );
-  }
-
-  async getWaitingUsers() {
+  async getWaitingUsers(staffId) {
     return await this.User.find({
       chat_mode: "staff",
       $or: [
         { current_staff_id: null },
         { current_staff_id: { $exists: false } },
+        { current_staff_id: staffId },
       ],
     })
       .sort({ update_chat_mode: 1 })
       .toArray();
+  }
+
+  async updateRank(userId, totalSpent) {
+    let newRank = "Đồng";
+
+    if (totalSpent >= 20000000) {
+      newRank = "Kim cương";
+    } else if (totalSpent >= 8000000) {
+      newRank = "Vàng";
+    } else if (totalSpent >= 3000000) {
+      newRank = "Bạc";
+    }
+
+    return await this.User.findOneAndUpdate(
+      { _id: new ObjectId(userId) },
+      { $set: { rank: newRank } },
+      { returnDocument: "after" },
+    );
+  }
+  async countNewUsers(startDate, endDate) {
+    return await this.User.countDocuments({
+      created_at: { $gte: new Date(startDate), $lte: new Date(endDate) },
+    });
+  }
+
+  async getTotalUsers() {
+    return await this.User.countDocuments({});
+  }
+
+  async getNewUsersByDate(startDate, endDate) {
+    return await this.User.aggregate([
+      {
+        $match: {
+          created: { $gte: new Date(startDate), $lte: new Date(endDate) },
+        },
+      },
+      {
+        $group: {
+          _id: { $dateToString: { format: "%d-%m-%Y", date: "$created" } },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]).toArray();
+  }
+
+  //Đếm số lượng user
+  async countUser() {
+    return this.User.countDocuments();
   }
 }
 

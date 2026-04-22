@@ -1,7 +1,7 @@
 <script>
 import Loading from "@/components/Loading.vue";
 import employeeService from "@/services/employee.service";
-
+import Swal from "sweetalert2";
 export default {
   components: {
     Loading,
@@ -79,24 +79,42 @@ export default {
       const phoneRegex = /^(0[3|5|7|8|9])([0-9]{8})$/;
 
       if (this.newStaff.name.trim().length < 2) {
-        alert("Tên nhân viên quá ngắn!");
+        Swal.fire({
+          icon: "warning",
+          title: "Tên quá ngắn",
+          text: "Vui lòng nhập tên nhân viên đầy đủ!",
+          confirmButtonColor: "#533422",
+        });
         return false;
       }
 
       if (!emailRegex.test(this.newStaff.email)) {
-        alert("Email không đúng định dạng (ví dụ: abc@gmail.com)!");
+        Swal.fire({
+          icon: "warning",
+          title: "Email sai định dạng",
+          text: "Ví dụ: abc@gmail.com",
+          confirmButtonColor: "#533422",
+        });
         return false;
       }
 
       if (!phoneRegex.test(this.newStaff.phone)) {
-        alert(
-          "Số điện thoại không hợp lệ (phải có 10 số và bắt đầu bằng 03, 05, 07, 08, 09)!",
-        );
+        Swal.fire({
+          icon: "warning",
+          title: "SĐT không hợp lệ",
+          text: "SĐT phải có 10 số và bắt đầu bằng 03, 05, 07, 08, 09",
+          confirmButtonColor: "#533422",
+        });
         return false;
       }
 
       if (this.newStaff.password.length < 6) {
-        alert("Mật khẩu phải có ít nhất 6 ký tự!");
+        Swal.fire({
+          icon: "warning",
+          title: "Mật khẩu yếu",
+          text: "Mật khẩu phải có ít nhất 6 ký tự",
+          confirmButtonColor: "#533422",
+        });
         return false;
       }
 
@@ -106,18 +124,35 @@ export default {
     async handleAddEmployee() {
       // Gọi hàm check trước khi chạy
       if (!this.validateData()) return;
-
+      Swal.fire({
+        title: "Đang tạo tài khoản...",
+        allowOutsideClick: false,
+        didOpen: () => {
+          Swal.showLoading();
+        },
+      });
       this.issubmitting = true;
       try {
-        console.log(this.newStaff);
         await employeeService.create(this.newStaff);
-        alert("Thêm nhân viên mới thành công!");
+        await Swal.fire({
+          icon: "success",
+          title: "Thành công!",
+          text: "Đã thêm nhân viên mới vào hệ thống.",
+          confirmButtonColor: "#533422",
+          timer: 2000,
+          showConfirmButton: false,
+        });
         this.closeModal();
         await this.loadStaffs();
       } catch (error) {
-        console.log("Lỗi gửi từ Server:", error.response);
-        // Nếu Backend trả về lỗi (ví dụ email đã tồn tại)
-        alert(error || "Đã có lỗi xảy ra khi thêm");
+        console.log(error);
+        Swal.fire({
+          icon: "error",
+          text:
+            error.response?.data?.message ||
+            "Email đã tồn tại hoặc có lỗi hệ thống.",
+          confirmButtonColor: "#533422",
+        });
       } finally {
         this.issubmitting = false;
       }
@@ -126,7 +161,17 @@ export default {
     // 4. Khóa/Mở khóa tài khoản
     async toggleBlock(staff) {
       const action = staff.block ? "mở khóa" : "khóa";
-      if (confirm(`Bạn có chắc chắn muốn ${action} nhân viên ${staff.name}?`)) {
+      const result = await Swal.fire({
+        text: `Bạn có chắc muốn ${action} tài khoản của ${staff.name} không?`,
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonColor: staff.block ? "#198754" : "#d33", // Mở khóa màu xanh, khóa màu đỏ
+        cancelButtonColor: "#6c757d",
+        confirmButtonText: staff.block ? "Mở khóa ngay" : "Khóa ngay",
+        cancelButtonText: "Hủy",
+        reverseButtons: true,
+      });
+      if (result.isConfirmed) {
         try {
           // Gọi API thật
           const result = await employeeService.updateStatusAccount(staff._id);
@@ -134,12 +179,22 @@ export default {
           // Cập nhật lại giá trị block từ server trả về
           staff.block = result.block;
 
-          alert(
-            `${action.charAt(0).toUpperCase() + action.slice(1)} thành công!`,
-          );
+          Swal.fire({
+            icon: "success",
+            text: `Tài khoản đã được ${action} thành công.`,
+            confirmButtonColor: "#533422",
+            timer: 1500,
+            showConfirmButton: false,
+          });
         } catch (error) {
           console.error(error);
-          alert("Không thể cập nhật trạng thái");
+          Swal.fire({
+            icon: "error",
+            text:
+              error.response?.data?.message ||
+              "Không thể thay đổi trạng thái tài khoản!",
+            confirmButtonColor: "#533422",
+          });
         }
       }
     },

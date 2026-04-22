@@ -3,21 +3,22 @@ import MyHeader from "@/components/header.vue";
 import MyFooter from "@/components/footer.vue";
 import Loading from "@/components/Loading.vue";
 import cartService from "@/services/cart.service";
-
+import { useCartStore } from "@/stores/cartStore";
+import Swal from "sweetalert2";
 export default {
   components: {
     MyHeader,
     MyFooter,
     Loading,
   },
-
+  setup() {
+    const cartStore = useCartStore();
+    return { cartStore };
+  },
   data() {
     return {
       isLoading: true,
       cart: null,
-      accessToken: sessionStorage.getItem("accessToken")
-        ? sessionStorage.getItem("accessToken")
-        : null,
     };
   },
 
@@ -36,8 +37,9 @@ export default {
         this.cart?.reduce((total, item) => {
           return item.selected
             ? (total +=
-                item.quantityInCart * item.price -
-                item.quantityInCart * item.price * (item.discount / 100))
+                item.quantityInCart *
+                item.price *
+                (1 - (item.discount || 0) / 100))
             : total;
         }, 0) || 0
       );
@@ -47,10 +49,11 @@ export default {
   methods: {
     async LoadData() {
       try {
-        const response = await cartService.getCart(this.accessToken);
+        const response = await cartService.getCart();
         this.cart = response.cart || [];
+        this.cartStore.updateTotalCount(this.cart);
       } catch (error) {
-        console.log(error);
+        console.log("Lỗi tải giỏ hàng:", error);
       } finally {
         this.isLoading = false;
       }
@@ -64,19 +67,21 @@ export default {
     },
 
     async handleDecrease(item) {
-      if (!item.old_quantity) item.old_quantity = item.quantityInCart;
+      if (item.quantityInCart <= 1) return;
+      item.old_quantity = item.quantityInCart;
       item.quantityInCart -= 1;
       await this.update(item);
     },
 
     async handleIncrease(item) {
-      if (!item.old_quantity) item.old_quantity = item.quantityInCart;
+      if (item.quantityInCart >= item.quantityInStock) return;
+      item.old_quantity = item.quantityInCart;
       item.quantityInCart += 1;
       await this.update(item);
     },
 
     handleFocus(item) {
-      if (item.old_quantity) item.old_quantity = item.quantityInCart;
+      item.old_quantity = item.quantityInCart;
     },
 
     async handleQtyChange(item) {
@@ -85,48 +90,101 @@ export default {
         item.quantityInCart = item.quantityInStock;
       await this.update(item);
     },
+
     async removeItem(item) {
-      this.isLoading = true;
-      try {
-        await cartService.deleteCart(item.variant_id, this.accessToken);
-        await this.LoadData();
-      } catch (error) {
-        console.log(error);
-      } finally {
-        this.isLoading = false;
+      const result = await Swal.fire({
+        title: "Xác nhận xóa?",
+        text: `Bạn có chắc muốn bỏ "${item.product_name}" khỏi giỏ hàng không?`,
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonColor: "#533422",
+        cancelButtonColor: "#d33",
+        confirmButtonText: "Đồng ý",
+        cancelButtonText: "Hủy",
+      });
+      if (result.isConfirmed) {
+        this.isLoading = true;
+        try {
+          await cartService.deleteCart(item.variant_id);
+          await this.LoadData();
+          Swal.fire({
+            icon: "success",
+            title: "Đã xóa!",
+            timer: 1500,
+            showConfirmButton: false,
+          });
+        } catch (error) {
+          console.log(error);
+        } finally {
+          this.isLoading = false;
+        }
       }
     },
 
     async update(item) {
       this.isLoading = true;
       try {
-        await cartService.update(
-          {
-            variant_id: item.variant_id,
-            quantity: item.quantityInCart,
-          },
-          this.accessToken,
-        );
+        await cartService.update({
+          variant_id: item.variant_id,
+          quantity: item.quantityInCart,
+        });
         item.old_quantity = item.quantityInCart;
+        this.cartStore.updateTotalCount(this.cart);
       } catch (error) {
         item.quantityInCart = item.old_quantity;
-        alert("Không thể cập nhật số lượng!");
+        Swal.fire({
+          icon: "error",
+          text: "Cập nhật số lượng thất bại",
+          confirmButtonColor: "#533422",
+        });
       } finally {
         this.isLoading = false;
       }
     },
 
     async deleteAll() {
-      try {
-        const oldCart = this.cart;
-        this.cart = [];
+      const result = await Swal.fire({
+        text: "Xác nhận xóa tất cả sản phẩm khỏi giỏ hàng",
+        icon: "question",
+        showCancelButton: true,
+        confirmButtonColor: "#533422",
+        confirmButtonText: "Xóa",
+        cancelButtonText: "Hủy",
+      });
 
-        await cartService.deleteAll(this.accessToken);
-      } catch (error) {
-        this.cart = oldCart;
-        alert("Lỗi server. Vui lòng thử lại");
-        console.log(error);
+      if (result.isConfirmed) {
+        try {
+          const oldCart = this.cart;
+          this.cart = [];
+          await cartService.deleteAll();
+          Swal.fire(
+            "Thành công",
+            "Xóa tất cả sản phẩm khỏi giỏ hàng thành công",
+            "success",
+          );
+        } catch (error) {
+          this.cart = oldCart;
+          Swal.fire("Lỗi!", "Đã có lỗi xảy ra vui lòng thử lại sau", "error");
+        }
       }
+    },
+
+    handelBuy() {
+      const product_selected = this.cart.filter((product) => product.selected);
+      if (product_selected.length === 0) {
+        Swal.fire({
+          icon: "info",
+          text: "Bạn cần chọn sản phẩm cần mua.",
+          confirmButtonColor: "#533422",
+        });
+        return;
+      }
+
+      sessionStorage.setItem("purchaseItems", JSON.stringify(product_selected));
+      this.$router.push({
+        name: "CheckOut",
+        query: { from: "cart" },
+      });
     },
   },
 
@@ -211,11 +269,18 @@ export default {
                 </div>
               </td>
 
-              <td class="text-center">
-                <div class="fw-medium">{{ item.price.toLocaleString() }}đ</div>
-              </td>
               <td class="text-center fw-bold text-danger">
                 {{ (item.price * item.quantityInCart).toLocaleString() }}đ
+              </td>
+
+              <td class="text-center fw-bold text-danger">
+                {{
+                  (
+                    item.price *
+                    (1 - (item.discount || 0) / 100) *
+                    item.quantityInCart
+                  ).toLocaleString()
+                }}đ
               </td>
               <td>
                 <button
@@ -259,7 +324,9 @@ export default {
                 </div>
               </div>
 
-              <button class="buy_merchandise">Mua hàng</button>
+              <button class="buy_merchandise" @click="handelBuy">
+                Mua hàng
+              </button>
             </div>
           </div>
         </div>

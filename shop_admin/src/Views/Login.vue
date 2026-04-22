@@ -45,6 +45,7 @@ export default {
         sessionStorage.setItem("accessToken", res.accessToken);
         sessionStorage.setItem("name", res.name);
         sessionStorage.setItem("role", res.role);
+        sessionStorage.setItem("avatar", res.image_url);
         this.$router.push("/dashboard");
       } catch (error) {
         this.error.error_res =

@@ -49,3 +49,10 @@ exports.isStaff = async (req, res, next) => {
     return next(new ApiError(403, "Tài khoản nhân viên đã bị khóa"));
   next();
 };
+
+exports.isAdmin = async (req, res, next) => {
+  console.log(req.user);
+  if (req.user.role !== "Quản trị viên")
+    return next(new ApiError(401, "Không thể sử dụng tài nguyên"));
+  next();
+};

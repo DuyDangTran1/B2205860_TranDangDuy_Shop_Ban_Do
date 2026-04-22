@@ -3,14 +3,13 @@ const path = require("path");
 const fs = require("fs");
 const ApiError = require("../api-error");
 
-// Tạo một hàm nhận vào tên thư mục (ví dụ: 'products', 'users')
+// Tạo một hàm nhận vào tên thư mục
 const createUpload = (folderName) => {
   const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-      // Dùng path.resolve để đảm bảo đường dẫn chuẩn xác từ gốc dự án
       const folderPath = path.resolve(
         __dirname,
-        `../../public/uploads/${folderName}`
+        `../../public/uploads/${folderName}`,
       );
 
       if (!fs.existsSync(folderPath)) {
@@ -26,19 +25,20 @@ const createUpload = (folderName) => {
 
   return multer({
     storage: storage,
-    limits: { fileSize: 2 * 1024 * 1024 }, // 2MB
+    limits: { fileSize: 20 * 1024 * 1024 },
     fileFilter: (req, file, cb) => {
-      const fileTypes = /jpeg|jpg|png|webp/;
+      const fileTypes = /jpeg|jpg|png|webp|mp4|mov|avi|mkv/;
       const extname = fileTypes.test(
-        path.extname(file.originalname).toLowerCase()
+        path.extname(file.originalname).toLowerCase(),
       );
-      const mimetype = fileTypes.test(file.mimetype);
 
-      if (extname && mimetype) {
+      const isImage = file.mimetype.startsWith("image/");
+      const isVideo = file.mimetype.startsWith("video/");
+
+      if (extname && (isImage || isVideo)) {
         return cb(null, true);
       }
-      // Trong Multer, lỗi trả về qua callback đầu tiên
-      cb(new ApiError(400, "Chỉ được sử dụng file ảnh (jpg, png, webp)"));
+      cb(new ApiError(400, "Chỉ chấp nhận ảnh hoặc video phù hợp!"));
     },
   });
 };
@@ -50,7 +50,7 @@ const removeFile = (filePath) => {
     "..",
     "..",
     "public",
-    filePath.startsWith("/") ? filePath.substring(1) : filePath
+    filePath.startsWith("/") ? filePath.substring(1) : filePath,
   );
 
   if (fs.existsSync(fullPath)) {

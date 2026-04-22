@@ -1,3 +1,5 @@
 shop_frontend/node_modules/
 shop_backend/node_modules/
 .env
+shop_backend/public/
+shop_frontend/public/

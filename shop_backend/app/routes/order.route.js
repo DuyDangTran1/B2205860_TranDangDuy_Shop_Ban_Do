@@ -38,4 +38,24 @@ router
     Authentication.isStaff,
     OrderController.updateStatus,
   );
+
+router
+  .route("/updateStatusCOD/:id")
+  .patch(
+    Authentication.Authentication,
+    Authentication.isStaff,
+    OrderController.updateStatusCOD,
+  );
+
+router
+  .route("/cancel/:id")
+  .patch(Authentication.Authentication, OrderController.cancelOrder);
+
+router
+  .route("/confirm_refund/:id")
+  .patch(
+    Authentication.Authentication,
+    Authentication.isStaff,
+    OrderController.confirmRefund,
+  );
 module.exports = router;

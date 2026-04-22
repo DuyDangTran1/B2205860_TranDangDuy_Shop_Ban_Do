@@ -84,6 +84,8 @@ exports.deleteAll = async (req, res, next) => {
     const cart_service = new CartService(MongoDB.client);
     if (!(await cart_service.deleteAll(req.user._id)))
       return next(new ApiError(404, "Không tìm thấy dữ liệu cần xóa"));
+
+    res.send("Xóa giỏ hàng thành công");
   } catch (error) {
     return next(new ApiError(500, "Lỗi server"));
   }

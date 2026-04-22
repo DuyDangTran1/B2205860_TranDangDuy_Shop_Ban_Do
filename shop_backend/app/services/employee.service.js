@@ -12,7 +12,7 @@ class Employee {
       phone: payload.phone,
       password: payload.password,
       address: payload.address,
-      role: payload.role || "nhân viên",
+      role: payload.role,
       birthday: payload.birthday,
       url_image: payload.url_image,
       updated_at: new Date(),
@@ -70,6 +70,20 @@ class Employee {
   //Lấy tất cả nhân viên
   async getListEmployee() {
     return await this.Employee.find({ role: "Nhân viên" }).toArray();
+  }
+
+  //Hàm cập nhật pass
+  async changePassword(id, hashedPassword) {
+    return this.Employee.findOneAndUpdate(
+      { _id: ObjectId.isValid(id) ? new ObjectId(id) : null },
+      { $set: { password: hashedPassword } },
+      { returnDocument: "after" },
+    );
+  }
+
+  // đếm số nhân viên
+  async countEmployee() {
+    return this.Employee.countDocuments();
   }
 }
 

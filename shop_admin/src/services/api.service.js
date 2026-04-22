@@ -1,30 +1,92 @@
 import axios from "axios";
+import router from "@/router";
+
+// Biến quản lý trạng thái Refresh
+let isRefreshing = false;
+let failedQueue = [];
+
+const processQueue = (error, token = null) => {
+  failedQueue.forEach((prom) => {
+    if (error) prom.reject(error);
+    else prom.resolve(token);
+  });
+  failedQueue = [];
+};
 
 export default (baseURL) => {
-  // 1. Tạo thực thể axios và gán vào biến instance
   const instance = axios.create({
     baseURL,
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
     withCredentials: true,
   });
 
-  // 2. Sử dụng interceptor trên biến instance đó
-  instance.interceptors.request.use(
-    (config) => {
-      // Lấy token từ sessionStorage
+  // 1. Request Interceptor
+  instance.interceptors.request.use((config) => {
+    const token = sessionStorage.getItem("accessToken");
+    if (token) {
+      config.headers["Authorization"] = `Bearer ${token}`;
+    }
+    // Tự động xử lý Content-Type
+    if (!(config.data instanceof FormData)) {
+      config.headers["Content-Type"] = "application/json";
+    }
+    return config;
+  });
+
+  // 2. Client riêng biệt để refresh (Không dính interceptor của instance)
+  const refreshClient = axios.create({
+    baseURL: "/api/employee",
+    withCredentials: true,
+  });
+
+  // 3. Response Interceptor
+  instance.interceptors.response.use(
+    (response) => response,
+    async (error) => {
+      const originalRequest = error.config;
       const token = sessionStorage.getItem("accessToken");
 
-      if (token) {
-        // Đính kèm vào header Authorization
-        config.headers.Authorization = `Bearer ${token}`;
+      // Nếu lỗi 403 (Token hết hạn) và có token cũ để refresh
+      if (error.response?.status === 403 && !originalRequest._retry && token) {
+        // NẾU ĐANG CÓ REQUEST KHÁC ĐANG REFRESH -> ĐỨNG VÀO HÀNG ĐỢI
+        if (isRefreshing) {
+          return new Promise((resolve, reject) => {
+            failedQueue.push({ resolve, reject });
+          })
+            .then((newToken) => {
+              originalRequest.headers["Authorization"] = `Bearer ${newToken}`;
+              return instance(originalRequest);
+            })
+            .catch((err) => Promise.reject(err));
+        }
+
+        //refresh
+        originalRequest._retry = true;
+        isRefreshing = true;
+
+        try {
+          const res = await refreshClient.post("/refresh-token");
+          const { accessToken } = res.data;
+
+          sessionStorage.setItem("accessToken", accessToken);
+
+          // GIẢI PHÓNG HÀNG ĐỢI (Cấp token mới cho mấy thằng đang đợi)
+          processQueue(null, accessToken);
+          isRefreshing = false;
+
+          // Chạy lại request hiện tại
+          originalRequest.headers["Authorization"] = `Bearer ${accessToken}`;
+          return instance(originalRequest);
+        } catch (refreshError) {
+          // REFRESH THẤT BẠI (Hết hạn cả Refresh Token)
+          processQueue(refreshError, null);
+          isRefreshing = false;
+
+          sessionStorage.clear();
+          router.push({ name: "Login" });
+          return Promise.reject(refreshError);
+        }
       }
 
-      return config;
-    },
-    (error) => {
       return Promise.reject(error);
     },
   );

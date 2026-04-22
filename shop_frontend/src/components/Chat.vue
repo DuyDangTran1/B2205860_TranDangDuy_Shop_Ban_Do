@@ -27,7 +27,7 @@ export default {
     async LoadData() {
       try {
         if (this.accessToken) {
-          const res = await chatService.getHistory(this.accessToken);
+          const res = await chatService.getHistory();
           this.messages = res.history ? res.history : [];
         }
       } catch (error) {
@@ -101,7 +101,7 @@ export default {
       const target = event.target.closest(".clickable-card");
       if (target) {
         const id = target.getAttribute("data-id");
-        this.$router.push({ name: "detail", params: { id: id } });
+        this.$router.push({ name: "Detail", params: { id: id } });
         this.$emit("close");
       }
     },
@@ -120,15 +120,15 @@ export default {
       });
 
       try {
-        const res = await chatService.chat(
-          { content: userMessage },
-          this.accessToken,
-        );
+        const res = await chatService.chat({ content: userMessage });
         if (res.mode === "ai") {
           this.messages.push({ role: "ai", content: res.reply });
         }
       } catch (error) {
-        this.messages.push({ role: "ai", content: "Lỗi kết nối." });
+        this.messages.push({
+          role: "ai",
+          content: "Nhân viên sẽ tư vấn cho bạn sau ít phút nữa.",
+        });
       } finally {
         this.loading = false;
         this.scrollToBottom();
@@ -275,7 +275,6 @@ export default {
   border-bottom-left-radius: 2px;
 }
 
-/* ✅ FIX LỖI TÊN CLASS TẠI ĐÂY - PHẢI LÀ .product-item-card */
 :deep(.product-item-card) {
   display: flex !important;
   background: #fff !important;

@@ -52,6 +52,7 @@ export default {
         staffId: this.adminInfo.id,
         staffName: this.adminInfo.name,
       });
+      this.selectedUser.current_staff_id = this.adminInfo.id;
     },
 
     // 4. Gửi tin nhắn cho khách
@@ -142,13 +143,15 @@ export default {
         </div>
         <div class="actions">
           <button
+            v-if="!selectedUser.current_staff_id"
             class="btn btn-sm btn-outline-primary me-2"
             @click="acceptChat"
           >
             Nhận tư vấn
           </button>
-          <button class="btn btn-sm btn-outline-danger" @click="endChat">
-            Kết thúc
+
+          <button v-else class="btn btn-sm btn-outline-danger" @click="endChat">
+            Kết thúc hỗ trợ
           </button>
         </div>
       </div>

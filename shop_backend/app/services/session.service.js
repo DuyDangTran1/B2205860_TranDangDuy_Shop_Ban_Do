@@ -56,6 +56,10 @@ class Session {
     );
   }
 
+  async findRefreshToken(refreshToken) {
+    return this.Session.findOne({ refreshToken: refreshToken });
+  }
+
   async updateLastestMessage(email, lastestProduct) {
     return this.Session.findOneAndUpdate(
       { email: email },

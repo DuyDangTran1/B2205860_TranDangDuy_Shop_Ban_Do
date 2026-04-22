@@ -7,8 +7,11 @@ router
   .route("/")
   .post(
     Upload.createUpload("products").single("image"),
-    products_variant.create
-  )
+    products_variant.create,
+  );
+
+router
+  .route("/:id")
   .put(Upload.createUpload("products").single("image"), products_variant.update)
   .delete(products_variant.delete);
 

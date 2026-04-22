@@ -11,9 +11,5 @@ router
 
 router
   .route("/history/:user_id")
-  .get(
-    Authentication.Authentication,
-    Authentication.isStaff,
-    chatController.getHistoryStaff,
-  );
+  .get(Authentication.Authentication, chatController.getHistoryStaff);
 module.exports = router;

@@ -12,6 +12,15 @@ class Employee {
 
   updateStatusAccount = async (id) =>
     (await this.privateApi.patch(`/updateStatusAccount/${id}`)).data;
+
+  getDetail = async (id) => (await this.privateApi.get(`/infor`)).data;
+
+  update = async (data) => (await this.privateApi.post("/update", data)).data;
+
+  changePassword = async (data) =>
+    (await this.privateApi.post("/change-password", data)).data;
+
+  logOut = async () => (await this.privateApi.get("/log_out")).data;
 }
 
 export default new Employee();

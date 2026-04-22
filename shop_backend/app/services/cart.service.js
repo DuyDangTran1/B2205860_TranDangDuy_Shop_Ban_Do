@@ -26,7 +26,6 @@ class Cart {
         ? new ObjectId(payload.variant_id)
         : null,
       quantity: parseInt(payload.quantity) || 1,
-      status: "incomplete",
     };
 
     if (!cart.user_id) delete cart.user_id;
@@ -44,7 +43,6 @@ class Cart {
       {
         user_id: data.user_id,
         "items.variant_id": data.variant_id,
-        status: "incomplete",
       },
       {
         projection: {
@@ -63,7 +61,6 @@ class Cart {
         {
           user_id: data.user_id,
           "items.variant_id": data.variant_id,
-          status: "incomplete",
         },
         { $inc: { "items.$.quantity": data.quantity } },
         { returnDocument: "after" },
@@ -73,7 +70,7 @@ class Cart {
         data.quantity = quantityInWareHouse;
 
       return this.CartCollection.findOneAndUpdate(
-        { user_id: data.user_id, status: "incomplete" },
+        { user_id: data.user_id },
         {
           $push: {
             items: { variant_id: data.variant_id, quantity: data.quantity },
@@ -94,7 +91,6 @@ class Cart {
     return this.CartCollection.findOneAndUpdate(
       {
         user_id: update.user_id,
-        status: "incomplete",
         "items.variant_id": update.variant_id,
       },
       {
@@ -106,26 +102,23 @@ class Cart {
     );
   }
 
-  //Hàm cập nhật trạng thái của giỏ hàng sau khi đã mua hàng
-  async updateStatus(user_id) {
-    return this.CartCollection.findOneAndUpdate(
-      {
-        user_id: user_id,
-        status: "incomplete",
-      },
-      {
-        $set: {
-          status: "complete",
-        },
-      },
-    );
-  }
+  // //Hàm cập nhật trạng thái của giỏ hàng sau khi đã mua hàng
+  // async updateStatus(user_id) {
+  //   return this.CartCollection.findOneAndUpdate(
+  //     {
+  //       user_id: user_id,
+  //     },
+  //     {
+  //       $set: {
+  //       },
+  //     },
+  //   );
+  // }
 
   async delete(user_id, variant_id) {
     return this.CartCollection.findOneAndUpdate(
       {
         user_id: user_id,
-        status: "incomplete",
       },
       {
         $pull: {
@@ -141,7 +134,7 @@ class Cart {
 
   async deleteAll(user_id) {
     return this.CartCollection.findOneAndUpdate(
-      { user_id: user_id, status: "incomplete" },
+      { user_id: user_id },
       {
         $set: {
           items: [],
@@ -152,11 +145,14 @@ class Cart {
   }
 
   async getAll(user_id) {
+    const now = new Date();
     return await this.CartCollection.aggregate([
-      { $match: { user_id: user_id, status: "incomplete" } },
-
+      {
+        $match: {
+          user_id: ObjectId.isValid(user_id) ? new ObjectId(user_id) : null,
+        },
+      },
       { $unwind: { path: "$items", preserveNullAndEmptyArrays: true } },
-
       {
         $lookup: {
           from: "Product_variant",
@@ -166,27 +162,6 @@ class Cart {
         },
       },
       { $unwind: "$productDetail" },
-
-      {
-        $lookup: {
-          from: "Color",
-          localField: "productDetail.color_id",
-          foreignField: "_id",
-          as: "colorInfo",
-        },
-      },
-      { $unwind: { path: "$colorInfo", preserveNullAndEmptyArrays: true } },
-
-      {
-        $lookup: {
-          from: "Size",
-          localField: "productDetail.size_id",
-          foreignField: "_id",
-          as: "sizeInfo",
-        },
-      },
-      { $unwind: { path: "$sizeInfo", preserveNullAndEmptyArrays: true } },
-
       {
         $lookup: {
           from: "Products",
@@ -195,9 +170,7 @@ class Cart {
           as: "productInfo",
         },
       },
-
       { $unwind: { path: "$productInfo", preserveNullAndEmptyArrays: true } },
-
       {
         $project: {
           _id: 1,
@@ -205,11 +178,25 @@ class Cart {
           quantityInCart: "$items.quantity",
           quantityInStock: "$productDetail.quantity",
           product_name: "$productInfo.product_name",
+          product_id: "$productDetail.product_id",
           price: "$productInfo.base_price",
-          discount: "$productInfo.discount",
           image: "$productDetail.image_url",
-          color_name: "$colorInfo.color_name",
-          size_name: "$sizeInfo.size_name",
+          color_name: "$productDetail.color_name",
+          size_name: "$productDetail.size_name",
+
+          discount: {
+            $cond: {
+              if: {
+                $and: [
+                  { $gt: ["$productInfo.discount", 0] },
+                  { $lte: ["$productInfo.discount_start", now] },
+                  { $gte: ["$productInfo.discount_end", now] },
+                ],
+              },
+              then: "$productInfo.discount",
+              else: 0,
+            },
+          },
         },
       },
     ]).toArray();

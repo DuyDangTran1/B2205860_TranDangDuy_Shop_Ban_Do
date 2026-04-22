@@ -70,3 +70,35 @@ exports.delete = async (req, res, next) => {
     );
   }
 };
+
+exports.getAllSupplier = async (req, res, next) => {
+  try {
+    const supplier_service = new SupplierService(MongoDB.client);
+    const suppliers = await supplier_service.getAllSupplier();
+    return res.json({ suppliers: suppliers });
+  } catch (error) {
+    return next(new ApiError(500, "Lỗi server"));
+  }
+};
+
+exports.updateCollaborateStatus = async (req, res, next) => {
+  const id = req.params.id;
+  if (!id)
+    return next(new ApiError(400, "Lỗi truyền thiếu id ncc cần cập nhật"));
+
+  try {
+    const supplier_service = new SupplierService(MongoDB.client);
+    const supplier = await supplier_service.findSupplier(id);
+    if (!supplier)
+      return next(new ApiError(404, "Không tìm thấy dữ liệu cần cập nhật"));
+
+    await supplier_service.updateStatusCollaborating(
+      id,
+      !supplier.is_collaborating,
+    );
+
+    return res.send("Cập nhật trạng thái thành công");
+  } catch (error) {
+    return next(new ApiError(500, "Lỗi server"));
+  }
+};

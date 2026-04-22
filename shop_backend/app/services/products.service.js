@@ -1,5 +1,4 @@
-const { ObjectId, ReturnDocument } = require("mongodb");
-const Size = require("./size.service");
+const { ObjectId } = require("mongodb");
 const genai = require("@google/genai");
 const { path } = require("../../app");
 
@@ -26,11 +25,9 @@ class ProductService {
       description: payload.description,
       discount_start: payload.discount_start,
       discount_end: payload.discount_end,
-      tag: payload.tag,
-      rating: payload.rating,
-      count_sell: payload.count_sell,
+      tag: payload.tag || [],
+      collection_tags: payload.collection_tags || [],
       image_url: payload.image_url,
-      created: new Date(),
     };
 
     Object.keys(product).forEach(
@@ -62,8 +59,16 @@ class ProductService {
   }
 
   //Hàm tạo sản phẩm
-  async create(product_information) {
+  async create(product_information, category_name, suggested_outfits) {
     const product = this.extractProductData(product_information);
+    product.rating = 0;
+    product.created = new Date();
+    const embedding = await this.createEmbedding(
+      product,
+      category_name,
+      suggested_outfits,
+    );
+    product.embedding = embedding;
     const result = await this.Product.findOneAndUpdate(
       { product_name: product.product_name },
       { $set: product },
@@ -115,6 +120,8 @@ class ProductService {
         base_price == 1 || base_price == -1 ? parseInt(base_price) : 1,
       created: created == 1 || created == -1 ? parseInt(created) : -1,
     };
+
+    const now = new Date();
     const [products, count_product, brands] = await Promise.all([
       this.Product.aggregate([
         { $match: filter },
@@ -124,38 +131,37 @@ class ProductService {
         {
           $lookup: {
             from: "Product_variant",
-            let: { proId: "$_id" },
-            pipeline: [
-              { $match: { $expr: { $eq: ["$product_id", "$$proId"] } } },
-              {
-                $lookup: {
-                  from: "Color",
-                  localField: "color_id",
-                  foreignField: "_id",
-                  as: "colorInfo",
-                },
-              },
-              { $unwind: "$colorInfo" },
-              {
-                $lookup: {
-                  from: "Size",
-                  localField: "size_id",
-                  foreignField: "_id",
-                  as: "sizeInfo",
-                },
-              },
-              { $unwind: "$sizeInfo" },
-              {
-                $project: {
-                  _id: 1,
-                  quantity: 1,
-                  image_url: 1,
-                  color_name: "$colorInfo.color_name",
-                  size_name: "$sizeInfo.size_name",
-                },
-              },
-            ],
+            localField: "_id",
+            foreignField: "product_id",
             as: "variants",
+          },
+        },
+
+        {
+          $addFields: {
+            is_discounting: {
+              $and: [
+                { $gt: [now, "$discount_start"] },
+                { $lt: [now, "$discount_end"] },
+                { $gt: ["$discount", 0] },
+              ],
+            },
+          },
+        },
+
+        {
+          $project: {
+            _id: 1,
+            product_name: 1,
+            base_price: 1,
+            image_url: 1,
+            brand: 1,
+            rating: 1,
+            count_sell: { $sum: "$variants.sold_count" },
+            variants: 1,
+            discount: {
+              $cond: { if: "$is_discounting", then: "$discount", else: 0 },
+            },
           },
         },
       ]).toArray(),
@@ -171,9 +177,15 @@ class ProductService {
   }
 
   //Hàm cập nhật thông tin sản phẩm
-  async update(id, payload) {
+  async update(id, payload, category_name, suggested_outfits) {
     const filter = { _id: ObjectId.isValid(id) ? new ObjectId(id) : null };
     const update = this.extractProductData(payload);
+    const embedding = await this.createEmbedding(
+      update,
+      category_name,
+      suggested_outfits,
+    );
+    update.embedding = embedding;
     delete update.created;
     return await this.Product.findOneAndUpdate(
       filter,
@@ -191,51 +203,70 @@ class ProductService {
 
   //Hàm lấy chi tiết sản phẩm
   async getProductById(id) {
+    const now = new Date();
     return await this.Product.aggregate([
       { $match: { _id: ObjectId.isValid(id) ? new ObjectId(id) : null } },
+      {
+        $addFields: {
+          is_discounting: {
+            $and: [
+              { $gt: [now, "$discount_start"] },
+              { $lt: [now, "$discount_end"] },
+              { $gt: ["$discount", 0] },
+            ],
+          },
+        },
+      },
+      {
+        $project: {
+          embedding: 0,
+        },
+      },
+      {
+        $addFields: {
+          discount: {
+            $cond: { if: "$is_discounting", then: "$discount", else: 0 },
+          },
+        },
+      },
       {
         $lookup: {
           from: "Product_variant",
           localField: "_id",
           foreignField: "product_id",
           as: "variant",
-          pipeline: [
-            {
-              $lookup: {
-                from: "Color",
-                localField: "color_id",
-                foreignField: "_id",
-                as: "color",
-              },
-            },
-            {
-              $lookup: {
-                from: "Size",
-                localField: "size_id",
-                foreignField: "_id",
-                as: "size",
-              },
-            },
-            { $unwind: { path: "$color", preserveNullAndEmptyArrays: true } },
-            { $unwind: { path: "$size", preserveNullAndEmptyArrays: true } },
-          ],
         },
       },
     ]).next();
   }
 
+  //Hàm Lấy 3 sản phẩm mới nhất cho trang chủ
+  async getProductNew() {
+    return this.Product.find().sort({ created: -1 }).limit(3).toArray();
+  }
+
   // Hàm tạo embedding từ dữ liệu sản phẩm
-  async createEmbedding(product) {
+  async createEmbedding(product, category_name, suggested_outfits) {
+    const allTags = [
+      ...(product.tag || []),
+      ...(product.collection_tags || []),
+    ];
+
+    const matchingStyle = suggested_outfits || "Phụ kiện thời trang phù hợp";
     try {
       const text = `
 Sản phẩm: ${product.product_name}
 Thương hiệu: ${product.brand}
-Danh mục: ${product.tag?.join(", ") || ""}
+Danh mục/Bộ sưu tập: ${allTags.join(", ")}
 Mô tả: ${product.description}
+Thể loại: ${category_name}
 Chất liệu: ${product.attribute?.material || ""}
 Phong cách: ${product.attribute?.style || ""}
+Độ dày: ${product.attribute?.thickness}
+Thiết kế OverSize: ${product.attribute?.oversize}
 Điểm nổi bật: ${product.bot_knowledge?.selling_point || ""}
 Mục đích sử dụng: ${product.bot_knowledge?.usage || ""}
+Gợi ý phối đồ (Outfit): Sản phẩm này cực kỳ phù hợp khi mặc cùng với ${matchingStyle}.
 `.trim();
 
       const result = await ai.models.embedContent({
@@ -243,9 +274,6 @@ Mục đích sử dụng: ${product.bot_knowledge?.usage || ""}
         contents: text,
       });
 
-      // console.log("RAW embedding response:", result);
-
-      // FIX: SDK mới trả về dạng này
       if (result && result.embeddings && result.embeddings.length > 0) {
         return result.embeddings[0].values;
       }
@@ -254,35 +282,6 @@ Mục đích sử dụng: ${product.bot_knowledge?.usage || ""}
     } catch (error) {
       console.error("Embedding error full:", error);
       return null;
-    }
-  }
-  // Hàm cập nhật embedding cho tất cả sản phẩm chưa có embedding
-  async updateMissingEmbeddings() {
-    try {
-      const products = await this.Product.find({
-        embedding: { $exists: false },
-      }).toArray();
-      console.log(products);
-      console.log(`Có ${products.length} sản phẩm cần update embedding`);
-
-      for (const product of products) {
-        const embedding = await this.createEmbedding(product);
-
-        await this.Product.updateOne(
-          { _id: product._id },
-          {
-            $set: {
-              embedding: embedding,
-            },
-          },
-        );
-
-        console.log(`Đã cập nhật: ${product.product_name}`);
-      }
-
-      console.log("Update embedding hoàn tất");
-    } catch (error) {
-      console.error("Lỗi update embedding:", error);
     }
   }
 
@@ -305,32 +304,13 @@ Mục đích sử dụng: ${product.bot_knowledge?.usage || ""}
             localField: "_id",
             foreignField: "product_id",
             as: "variants",
+
             pipeline: [
-              {
-                $lookup: {
-                  from: "Color",
-                  localField: "color_id",
-                  foreignField: "_id",
-                  as: "color",
-                },
-              },
-
-              {
-                $lookup: {
-                  from: "Size",
-                  localField: "size_id",
-                  foreignField: "_id",
-                  as: "size",
-                },
-              },
-
-              { $unwind: { path: "$color", preserveNullAndEmptyArrays: true } },
-              { $unwind: { path: "$size", preserveNullAndEmptyArrays: true } },
               {
                 $project: {
                   _id: 0,
-                  color_name: "$color.color_name",
-                  size_name: "$size.size_name",
+                  color_name: 1,
+                  size_name: 1,
                   quantity: 1,
                   image_url: 1,
                 },
@@ -360,13 +340,187 @@ Mục đích sử dụng: ${product.bot_knowledge?.usage || ""}
   }
 
   async getAllProduct() {
-    return this.Product.find()
-      .project({
-        _id: 1,
-        product_name: 1,
-        image_url: 1,
-      })
-      .toArray();
+    const now = new Date();
+    return this.Product.aggregate([
+      {
+        $addFields: {
+          is_discounting: {
+            $and: [
+              { $gt: [now, "$discount_start"] },
+              { $lt: [now, "$discount_end"] },
+              { $gt: ["$discount", 0] },
+            ],
+          },
+        },
+      },
+      {
+        $project: {
+          _id: 1,
+          product_name: 1,
+          base_price: 1,
+          image_url: 1,
+          category_id: 1,
+          discount: {
+            $cond: { if: "$is_discounting", then: "$discount", else: 0 },
+          },
+        },
+      },
+      { $sort: { _id: -1 } },
+    ]).toArray();
+  }
+
+  async syncCollectionTag(
+    productId,
+    collectionName,
+    category_name,
+    suggested_outfits,
+    action = "add",
+  ) {
+    const product = await this.findProductById(productId);
+    if (!product) return null;
+
+    if (!Array.isArray(product.collection_tags)) product.collection_tags = [];
+
+    if (action === "add") {
+      if (!product.collection_tags.includes(collectionName)) {
+        product.collection_tags.push(collectionName);
+      }
+    } else if (action === "remove") {
+      product.collection_tags = product.collection_tags.filter(
+        (t) => t !== collectionName,
+      );
+    }
+
+    const embedding = await this.createEmbedding(
+      product,
+      category_name,
+      suggested_outfits,
+    );
+
+    return await this.Product.findOneAndUpdate(
+      { _id: product._id },
+      {
+        $set: {
+          collection_tags: product.collection_tags,
+          embedding: embedding,
+        },
+      },
+      { returnDocument: "after" },
+    );
+  }
+
+  async updateDiscount(id, discountData) {
+    const filter = {
+      _id: ObjectId.isValid(id) ? new ObjectId(id) : null,
+    };
+
+    const update = {
+      discount: Number(discountData.discount || 0),
+      discount_start: discountData.discount_start
+        ? new Date(discountData.discount_start)
+        : null,
+      discount_end: discountData.discount_end
+        ? new Date(discountData.discount_end)
+        : null,
+    };
+
+    if (!filter._id) return null;
+
+    return await this.Product.findOneAndUpdate(
+      filter,
+      { $set: update },
+      { returnDocument: "after" },
+    );
+  }
+  async updateRating(productId, avgRating, totalReviews) {
+    return await this.Product.updateOne(
+      { _id: new ObjectId(productId) },
+      {
+        $set: {
+          rating: parseFloat(avgRating.toFixed(1)),
+          review_count: totalReviews,
+        },
+      },
+    );
+  }
+
+  async getOutfitSuggestions(currentProduct) {
+    if (!currentProduct || !currentProduct.embedding) return [];
+
+    const pipeline = [
+      {
+        $vectorSearch: {
+          index: "vector_index",
+          path: "embedding",
+          queryVector: currentProduct.embedding,
+          numCandidates: 100,
+          limit: 10,
+        },
+      },
+      {
+        $match: {
+          _id: { $ne: currentProduct._id },
+          category_id: { $ne: currentProduct.category_id }, // không lấy cùng loại
+        },
+      },
+      {
+        $lookup: {
+          from: "Product_variant",
+          localField: "_id",
+          foreignField: "product_id",
+          as: "variants_data",
+        },
+      },
+
+      {
+        $addFields: {
+          count_sell: { $sum: "$variants_data.sold_count" },
+        },
+      },
+      { $limit: 4 },
+      {
+        $project: {
+          embedding: 0,
+          variants_data: 0,
+        },
+      },
+    ];
+
+    return await this.Product.aggregate(pipeline).toArray();
+  }
+  async getRecommendationsFromProductList(productIds) {
+    try {
+      const boughtIds = productIds.map((id) => id.toString());
+
+      const boughtProducts = await this.Product.find({
+        _id: { $in: productIds.map((id) => new ObjectId(id)) },
+      }).toArray();
+
+      const suggestionPromises = boughtProducts.map((product) =>
+        this.getOutfitSuggestions(product),
+      );
+      const resultsArray = await Promise.all(suggestionPromises);
+
+      // 3. Gom mảng, lọc trùng và loại bỏ đồ đã mua
+      const allSuggestions = resultsArray.flat();
+
+      return allSuggestions
+        .filter(
+          (item, index, self) =>
+            index ===
+              self.findIndex((t) => t._id.toString() === item._id.toString()) &&
+            !boughtIds.includes(item._id.toString()),
+        )
+        .slice(0, 6);
+    } catch (error) {
+      console.error("Lỗi gợi ý danh sách:", error);
+      return [];
+    }
+  }
+
+  // đếm số sản phẩm
+  async countProduct() {
+    return this.Product.countDocuments();
   }
 }
 

@@ -21,20 +21,39 @@ class Supplier {
 
   async create(payload) {
     const supplier = this.extractSupplierData(payload);
+    supplier.is_collaborating = true;
     return this.Supplier.insertOne(supplier);
   }
 
   async update(id, payload) {
     const update = this.extractSupplierData(payload);
-    return this.Supplier.findOneAndUpdate(
+    return await this.Supplier.findOneAndUpdate(
       { _id: ObjectId.isValid(id) ? new ObjectId(id) : null },
       { $set: update },
       { returnDocument: "after" },
     );
   }
 
+  async updateStatusCollaborating(id, status) {
+    return await this.Supplier.findOneAndUpdate(
+      { _id: ObjectId.isValid(id) ? new ObjectId(id) : null },
+      { $set: { is_collaborating: status } },
+      { returnDocument: "after" },
+    );
+  }
+
   async delete(id) {
     return this.Supplier.findOneAndDelete({
+      _id: ObjectId.isValid(id) ? new ObjectId(id) : null,
+    });
+  }
+
+  async getAllSupplier() {
+    return await this.Supplier.find().sort({ _id: -1 }).toArray();
+  }
+
+  async findSupplier(id) {
+    return await this.Supplier.findOne({
       _id: ObjectId.isValid(id) ? new ObjectId(id) : null,
     });
   }

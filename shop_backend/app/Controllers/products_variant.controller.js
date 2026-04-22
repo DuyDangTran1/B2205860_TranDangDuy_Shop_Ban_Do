@@ -6,22 +6,28 @@ const multer_mw = require("../middelwares/multer.middelware");
 exports.create = async (req, res, next) => {
   if (!req.file) return next(new ApiError(400, "Thiếu ảnh minh họa"));
 
-  if (!req.body.product_id || !req.body.color_id || !req.body.size_id)
+  if (!req.body.product_id || !req.body.color_name || !req.body.size_name)
     return next(new ApiError(400, "Lỗi truyền dữ liệu"));
-
-  if (req.body.quantity < 0)
-    return next(new ApiError(400, "Số lượng truyền vào không được âm"));
 
   const variant = {
     product_id: req.body.product_id,
-    color_id: req.body.color_id,
-    size_id: req.body.size_id,
-    quantity: Number(req.body.quantity) || 0,
+    color_name: req.body.color_name,
+    size_name: req.body.size_name,
     image_url: `uploads/products/${req.file.filename}`,
   };
 
   try {
     const product_variant = new ProductVariant(MongDB.client);
+
+    if (
+      await product_variant.findVariantByInformation(
+        variant.product_id,
+        variant.color_name,
+        variant.size_name,
+      )
+    )
+      return next(new ApiError(404, "Biến thể đã có trong hệ thống"));
+
     await product_variant.create(variant);
 
     return res.send("Thêm dữ liệu thành công");
@@ -32,26 +38,22 @@ exports.create = async (req, res, next) => {
   }
 };
 exports.update = async (req, res, next) => {
-  const { product_id, size_id, color_id } = req.query;
-  if (!product_id || !size_id || !color_id)
-    return next(new ApiError(400, "Lỗi truyền thông tin dữ liệu"));
-
+  const id = req.params.id;
+  if (!id) return next(new ApiError(400, "Lỗi thiếu id sản phẩm"));
+  const { product_id, color_name, size_name } = req.body;
+  if (!product_id || !color_name || !size_name)
+    return next(new ApiError(400, "Thiếu dữ liệu về sản phẩm"));
   try {
     const product_variant = new ProductVariant(MongDB.client);
-    const variant = await product_variant.findVariant(
-      product_id,
-      color_id,
-      size_id,
-    );
+    const variant = await product_variant.findVariant(id);
     if (!variant)
       return next(new ApiError(404, "Không tìm thấy dữ liệu cần cập nhật"));
 
     const old_url = variant.image_url;
     const update = {
       product_id: product_id,
-      color_id: color_id,
-      size_id: size_id,
-      quantity: req.body.quantity ? req.body.quantity : variant.quantity,
+      color_name: color_name,
+      size_name: size_name,
     };
     if (!req.file) {
       update.image_url = old_url;
@@ -60,7 +62,7 @@ exports.update = async (req, res, next) => {
       update.image_url = `uploads/products/${req.file.filename}`;
     }
 
-    await product_variant.update(update);
+    await product_variant.update(id, update);
     return res.send("Cập nhật thành công");
   } catch (error) {
     return next(new ApiError(500, "Đã có lỗi xảy ra trong quá trình cập nhật"));
@@ -68,23 +70,18 @@ exports.update = async (req, res, next) => {
 };
 
 exports.delete = async (req, res, next) => {
-  const { product_id, size_id, color_id } = req.query;
-  if (!product_id || !size_id || !color_id)
-    return next(new ApiError(400, "Lỗi truyền dữ liệu"));
+  const id = req.params.id;
+  if (!id) return next(new ApiError(400, "Lỗi thiếu dữ liệu về sản phẩm"));
 
   try {
     const product_variant = new ProductVariant(MongDB.client);
-    const variant = await product_variant.findVariant(
-      product_id,
-      size_id,
-      color_id,
-    );
+    const variant = await product_variant.findVariant(id);
     if (!variant)
       return next(new ApiError(404, "Không tìm thấy dữ liệu cần xóa"));
 
     multer_mw.removeFile(variant.image_url);
 
-    await product_variant.delete(product_id, size_id, color_id);
+    await product_variant.delete(id);
     return res.send("Xóa dữ liệu thành công");
   } catch (error) {
     return next(new ApiError(500, "Đã có lỗi xảy ra trong quá trình xóa"));

@@ -8,13 +8,13 @@ class Collection {
   extractCollectionData(payload) {
     const collection = {
       collection_name: payload.collection_name?.trim(),
+      description: payload.description,
+      image_url: payload.image_url,
     };
 
-    if (
-      collection.collection_name === undefined ||
-      collection.collection_name === null
-    )
-      delete collection.collection_name;
+    Object.keys(collection).forEach(
+      (key) => collection[key] === undefined && delete collection[key],
+    );
     return collection;
   }
 
@@ -45,7 +45,13 @@ class Collection {
   }
 
   async getAllCollection() {
-    return await this.Collection.find().toArray();
+    return await this.Collection.find().sort({ _id: -1 }).toArray();
+  }
+
+  async findCollection(id) {
+    return await this.Collection.findOne({
+      _id: ObjectId.isValid(id) ? new ObjectId(id) : null,
+    });
   }
 }
 

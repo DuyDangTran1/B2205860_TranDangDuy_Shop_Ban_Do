@@ -1,7 +1,6 @@
 <script setup>
-import RegisterView from "./views/RegisterView.vue";
+import { RouterView } from "vue-router";
 </script>
 <template>
-  <RegisterView></RegisterView>
+  <RouterView></RouterView>
 </template>
-<style></style>

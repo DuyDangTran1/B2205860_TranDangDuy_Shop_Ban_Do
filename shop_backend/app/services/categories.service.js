@@ -9,6 +9,11 @@ class Categories {
     const category = {
       category_name: payload.category_name?.trim(),
       parent_name: payload.parent_name?.trim(),
+      description: payload.description,
+      suggested_outfits: payload.suggested_outfits || "",
+      slug: payload.category_name
+        ? this.toSlug(payload.category_name)
+        : undefined,
     };
 
     Object.keys(category).forEach((key) => {
@@ -128,6 +133,12 @@ class Categories {
         },
       },
     ]).toArray();
+  }
+
+  async findCategoryByID(id) {
+    return this.Categories.findOne({
+      _id: ObjectId.isValid(id) ? new ObjectId(id) : null,
+    });
   }
 }
 

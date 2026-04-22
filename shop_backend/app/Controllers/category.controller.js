@@ -6,6 +6,8 @@ exports.create = async (req, res, next) => {
   const category = {
     category_name: req.body.category_name,
     parent_name: req.body.parent_name ? req.body.parent_name : null,
+    description: req.body.description,
+    suggested_outfits: req.body.suggested_outfits,
   };
 
   if (!category.category_name)
@@ -27,6 +29,8 @@ exports.update = async (req, res, next) => {
   const category = {
     category_name: req.body.category_name,
     parent_name: req.body.parent_name,
+    description: req.body.description,
+    suggested_outfits: req.body.suggested_outfits,
   };
 
   if (!id || !category.category_name)
