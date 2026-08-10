@@ -7,7 +7,10 @@
         <h4 class="fw-bold text-brown m-0 text-uppercase">Quản lý Thể loại</h4>
       </div>
 
-      <div class="d-flex gap-2">
+      <div
+        v-if="userStore.hasPermission('CATEGORY_CREATE')"
+        class="d-flex gap-2"
+      >
         <button
           class="btn btn-brown px-4 shadow-sm fw-bold"
           @click="openAddModal"
@@ -47,6 +50,10 @@
                 Danh mục cha
               </th>
               <th
+                v-if="
+                  userStore.hasPermission('CATEGORY_UPDATE') ||
+                  userStore.hasPermission('CATEGORY_DELETE')
+                "
                 class="pe-4 py-3 text-dark fw-bold small text-uppercase text-end"
               >
                 Thao tác
@@ -77,15 +84,23 @@
                   >Danh mục gốc</span
                 >
               </td>
-              <td class="pe-4 text-end">
+              <td
+                v-if="
+                  userStore.hasPermission('CATEGORY_UPDATE') ||
+                  userStore.hasPermission('CATEGORY_DELETE')
+                "
+                class="pe-4 text-end"
+              >
                 <div class="btn-group shadow-sm">
                   <button
+                    v-if="userStore.hasPermission('CATEGORY_UPDATE')"
                     @click="openEditModal(cat)"
                     class="btn btn-white text-warning border-end"
                   >
                     <i class="fas fa-edit"></i>
                   </button>
                   <button
+                    v-if="userStore.hasPermission('CATEGORY_DELETE')"
                     @click="deleteCategory(cat._id)"
                     class="btn btn-white text-danger"
                   >
@@ -189,7 +204,12 @@
 <script>
 import categoryService from "@/services/category.service";
 import Swal from "sweetalert2";
+import { useUserStore } from "@/stores/user";
 export default {
+  setup() {
+    const userStore = useUserStore();
+    return { userStore };
+  },
   data() {
     return {
       showModal: false,

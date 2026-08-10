@@ -1,10 +1,15 @@
 <script>
 import Loading from "@/components/Loading.vue";
 import userService from "@/services/user.service";
+import { useUserStore } from "@/stores/user";
 import Swal from "sweetalert2";
 
 export default {
   components: { Loading },
+  setup() {
+    const userStore = useUserStore();
+    return { userStore };
+  },
   data() {
     return {
       loading: true,
@@ -247,22 +252,26 @@ export default {
                     <i class="fas fa-eye"></i>
                   </button>
 
-                  <button
-                    v-if="!user.block"
-                    class="btn btn-sm btn-outline-danger"
-                    @click="toggleBlock(user)"
-                    title="Khóa tài khoản"
+                  <template
+                    v-if="userStore.hasPermission('USER_UPDATE_STATUS_ACCOUNT')"
                   >
-                    <i class="fas fa-user-slash"></i>
-                  </button>
-                  <button
-                    v-else
-                    class="btn btn-sm btn-outline-success"
-                    @click="toggleBlock(user)"
-                    title="Mở khóa tài khoản"
-                  >
-                    <i class="fas fa-user-check"></i>
-                  </button>
+                    <button
+                      v-if="!user.block"
+                      class="btn btn-sm btn-outline-danger"
+                      @click="toggleBlock(user)"
+                      title="Khóa tài khoản"
+                    >
+                      <i class="fas fa-user-slash"></i>
+                    </button>
+                    <button
+                      v-else
+                      class="btn btn-sm btn-outline-success"
+                      @click="toggleBlock(user)"
+                      title="Mở khóa tài khoản"
+                    >
+                      <i class="fas fa-user-check"></i>
+                    </button>
+                  </template>
                 </div>
               </td>
             </tr>

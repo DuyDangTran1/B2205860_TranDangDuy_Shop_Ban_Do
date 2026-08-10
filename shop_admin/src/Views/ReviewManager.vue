@@ -1,10 +1,15 @@
 <script>
 import reviewAdminService from "@/services/review.service";
 import Loading from "@/components/Loading.vue";
+import { useUserStore } from "@/stores/user";
 import Swal from "sweetalert2";
 
 export default {
   components: { Loading },
+  setup() {
+    const userStore = useUserStore();
+    return { userStore };
+  },
   data() {
     return {
       reviews: [],
@@ -315,6 +320,7 @@ export default {
                       <i class="fas fa-eye"></i>
                     </button>
                     <button
+                      v-if="userStore.hasPermission('REVIEW_TOGGLE_STATUS')"
                       @click="toggleStatus(r)"
                       class="btn btn-white shadow-none border-0"
                       :class="r.is_visible ? 'text-danger' : 'text-success'"

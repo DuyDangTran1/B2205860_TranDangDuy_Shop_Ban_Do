@@ -9,7 +9,10 @@
         </h4>
       </div>
 
-      <div class="d-flex gap-2">
+      <div
+        v-if="userStore.hasPermission('SUPPLIER_CREATE')"
+        class="d-flex gap-2"
+      >
         <button
           class="btn btn-brown px-4 shadow-sm fw-bold"
           @click="openAddModal"
@@ -74,6 +77,10 @@
                   Trạng thái
                 </th>
                 <th
+                  v-if="
+                    userStore.hasPermission('SUPPLIER_UPDATE') ||
+                    userStore.hasPermission('SUPPLIER_COLLABORATE')
+                  "
                   class="pe-4 py-3 text-dark fw-bold small text-uppercase text-end"
                 >
                   Thao tác
@@ -109,9 +116,16 @@
                     }}
                   </span>
                 </td>
-                <td class="pe-4 text-end">
+                <td
+                  v-if="
+                    userStore.hasPermission('SUPPLIER_UPDATE') ||
+                    userStore.hasPermission('SUPPLIER_COLLABORATE')
+                  "
+                  class="pe-4 text-end"
+                >
                   <div class="btn-group shadow-sm">
                     <button
+                      v-if="userStore.hasPermission('SUPPLIER_UPDATE')"
                       @click="openEditModal(sup)"
                       class="btn btn-white text-warning border-end"
                       title="Sửa"
@@ -119,6 +133,7 @@
                       <i class="fas fa-edit"></i>
                     </button>
                     <button
+                      v-if="userStore.hasPermission('SUPPLIER_COLLABORATE')"
                       @click="toggleStatus(sup)"
                       class="btn btn-white"
                       :class="
@@ -222,9 +237,14 @@
 
 <script>
 import supplierService from "@/services/supplier.service";
+import { useUserStore } from "@/stores/user";
 import Swal from "sweetalert2";
 
 export default {
+  setup() {
+    const userStore = useUserStore();
+    return { userStore };
+  },
   data() {
     return {
       showModal: false,

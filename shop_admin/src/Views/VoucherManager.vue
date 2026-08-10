@@ -1,10 +1,15 @@
 <script>
 import voucherService from "@/services/voucher.service";
 import Loading from "@/components/Loading.vue";
+import { useUserStore } from "@/stores/user";
 import Swal from "sweetalert2";
 
 export default {
   components: { Loading },
+  setup() {
+    const userStore = useUserStore();
+    return { userStore };
+  },
   data() {
     return {
       vouchers: [],
@@ -198,6 +203,7 @@ export default {
           Quản lý Mã Giảm Giá
         </h4>
         <button
+          v-if="userStore.hasPermission('VOUCHER_CREATE')"
           class="btn btn-brown px-4 py-2 shadow-sm fw-bold rounded-pill"
           @click="openAddModal"
         >
@@ -290,6 +296,10 @@ export default {
                   Trạng thái
                 </th>
                 <th
+                  v-if="
+                    userStore.hasPermission('VOUCHER_UPDATE') ||
+                    userStore.hasPermission('VOUCHER_CHANGE_STATUS')
+                  "
                   class="py-3 small fw-bold text-uppercase text-brown text-end pe-4"
                 >
                   Thao tác
@@ -362,11 +372,18 @@ export default {
                     >Đang hoạt động</span
                   >
                 </td>
-                <td class="pe-4 text-end">
+                <td
+                  v-if="
+                    userStore.hasPermission('VOUCHER_UPDATE') ||
+                    userStore.hasPermission('VOUCHER_CHANGE_STATUS')
+                  "
+                  class="pe-4 text-end"
+                >
                   <div
                     class="btn-group shadow-sm border rounded-pill bg-white px-1"
                   >
                     <button
+                      v-if="userStore.hasPermission('VOUCHER_UPDATE')"
                       @click="openEditModal(v)"
                       class="btn btn-white text-warning"
                       title="Chỉnh sửa"
@@ -375,6 +392,7 @@ export default {
                     </button>
 
                     <button
+                      v-if="userStore.hasPermission('VOUCHER_CHANGE_STATUS')"
                       @click="toggleStatus(v)"
                       class="btn btn-white"
                       :class="v.is_active ? 'text-danger' : 'text-success'"

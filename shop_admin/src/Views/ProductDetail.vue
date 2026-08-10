@@ -32,6 +32,7 @@
                   {{ product.product_name }}
                 </h5>
                 <button
+                  v-if="userStore.hasPermission('PRODUCT_UPDATE')"
                   @click="
                     $router.push({
                       name: 'product_edit',
@@ -81,6 +82,7 @@
             <div class="d-flex justify-content-between align-items-center mb-4">
               <h5 class="fw-bold m-0 text-brown">DANH SÁCH BIẾN THỂ</h5>
               <button
+                v-if="userStore.hasPermission('VARIANT_CREATE')"
                 class="btn btn-brown btn-sm px-4 shadow-sm fw-bold rounded-pill"
                 @click="openAddVariantModal"
               >
@@ -98,7 +100,15 @@
                     <th class="py-3">Màu sắc</th>
                     <th class="py-3">Kích thước</th>
                     <th class="py-3">Số lượng</th>
-                    <th class="py-3 text-end pe-4">Thao tác</th>
+                    <th
+                      v-if="
+                        userStore.hasPermission('VARIANT_UPDATE') ||
+                        userStore.hasPermission('VARIANT_DELETE')
+                      "
+                      class="py-3 text-end pe-4"
+                    >
+                      Thao tác
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -124,9 +134,16 @@
                         {{ v.quantity }}
                       </span>
                     </td>
-                    <td class="pe-4 text-end">
+                    <td
+                      v-if="
+                        userStore.hasPermission('VARIANT_UPDATE') ||
+                        userStore.hasPermission('VARIANT_DELETE')
+                      "
+                      class="pe-4 text-end"
+                    >
                       <div class="btn-group shadow-sm">
                         <button
+                          v-if="userStore.hasPermission('VARIANT_UPDATE')"
                           class="btn btn-white text-warning border-end"
                           @click="openEditVariantModal(v)"
                           title="Sửa"
@@ -134,6 +151,7 @@
                           <i class="fas fa-edit"></i>
                         </button>
                         <button
+                          v-if="userStore.hasPermission('VARIANT_DELETE')"
                           class="btn btn-white text-danger"
                           @click="handleDeleteVariant(v._id)"
                           title="Xóa"
@@ -144,9 +162,12 @@
                     </td>
                   </tr>
                   <tr v-if="variants.length === 0">
-                    <td colspan="5" class="py-5 text-muted small italic">
+                    <td
+                      colspan="5"
+                      class="text-center py-5 text-muted small italic"
+                    >
                       <i
-                        class="fas fa-box-open fa-2x mb-2 d-block opacity-25"
+                        class="mx-auto fas fa-box-open fa-2x mb-2 d-block opacity-25"
                       ></i>
                       Chưa có biến thể cho sản phẩm này.
                     </td>
@@ -236,10 +257,15 @@
 import Loading from "@/components/Loading.vue";
 import productService from "@/services/product.service";
 import variantService from "@/services/product_variant.service";
+import { useUserStore } from "@/stores/user";
 import Swal from "sweetalert2";
 
 export default {
   components: { Loading },
+  setup() {
+    const userStore = useUserStore();
+    return { userStore };
+  },
   data() {
     return {
       product: null,

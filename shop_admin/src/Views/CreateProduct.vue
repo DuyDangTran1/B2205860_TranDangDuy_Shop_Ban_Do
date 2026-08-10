@@ -89,7 +89,7 @@ export default {
         return Swal.fire({
           icon: "warning",
           title: "Thiếu ảnh",
-          text: "Vui lòng chọn ảnh minh họa Duy ơi!",
+          text: "Vui lòng chọn ảnh minh họa!",
           confirmButtonColor: "#ac7657",
         });
       }
@@ -123,7 +123,7 @@ export default {
         console.log(err);
         Swal.fire({
           icon: "error",
-          title: "Lỗi rồi Duy ơi!",
+          title: "Lỗi rồi!",
           text: "Có lỗi xảy ra khi lưu, vui lòng kiểm tra lại.",
           confirmButtonColor: "#ac7657",
         });

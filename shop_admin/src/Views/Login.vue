@@ -1,6 +1,11 @@
 <script>
 import employeeService from "@/services/employee.service";
+import { useUserStore } from "@/stores/user";
 export default {
+  setup() {
+    const userStore = useUserStore();
+    return { userStore };
+  },
   data() {
     return {
       account: {
@@ -42,10 +47,13 @@ export default {
 
       try {
         const res = await employeeService.login(this.account);
+        this.userStore.setUser(res);
         sessionStorage.setItem("accessToken", res.accessToken);
         sessionStorage.setItem("name", res.name);
         sessionStorage.setItem("role", res.role);
         sessionStorage.setItem("avatar", res.image_url);
+        sessionStorage.setItem("permissions", JSON.stringify(res.permissions));
+        sessionStorage.setItem("employeeId", res._id);
         this.$router.push("/dashboard");
       } catch (error) {
         this.error.error_res =

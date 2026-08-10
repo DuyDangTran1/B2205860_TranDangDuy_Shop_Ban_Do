@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from "vue-router";
 import { jwtDecode } from "jwt-decode";
 import Login from "@/Views/Login.vue";
+import { useUserStore } from "@/stores/user";
 import Admin from "@/Views/Admin.vue";
 const routes = [
   {
@@ -101,6 +102,17 @@ const routes = [
         name: "Statistical",
         component: () => import("@/Views/Statistical.vue"),
       },
+
+      {
+        path: "statistical/order",
+        name: "StatisticalOrder",
+        component: () => import("@/Views/StatisticalOrder.vue"),
+      },
+      {
+        path: "statistical/inventory",
+        name: "StatisticalInventory",
+        component: () => import("@/Views/StatisticalInventory.vue"),
+      },
       {
         path: "profile",
         name: "Profile",
@@ -122,11 +134,12 @@ router.beforeEach((to, from, next) => {
   }
 
   if (accessToken) {
+    const userStore = useUserStore();
     try {
       const decoded = jwtDecode(accessToken);
       const userRole = decoded.role;
 
-      console.log(decoded);
+      // console.log(decoded);
 
       // Nếu đã Login mà cố vào lại trang Login -> Đẩy vào Dashboard
       if (to.path === "/login") {
@@ -140,6 +153,14 @@ router.beforeEach((to, from, next) => {
         sessionStorage.removeItem("accessToken");
         return next("/login");
       }
+
+      // if (
+      //   to.meta.requiresPermission &&
+      //   !userStore.hasPermission(to.meta.requiresPermission)
+      // ) {
+      //   alert("Bạn không có quyền truy cập vào chức năng này!");
+      //   return next({ name: "Dashboard" });
+      // }
     } catch (error) {
       // Nếu token lỗi hoặc hết hạn
       sessionStorage.removeItem("accessToken");

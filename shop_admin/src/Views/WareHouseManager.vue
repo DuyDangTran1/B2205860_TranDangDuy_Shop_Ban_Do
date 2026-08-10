@@ -5,13 +5,24 @@
         <h1>Quản Lý Kho Hàng</h1>
         <p>Theo dõi nhập hàng và điều chỉnh tồn kho chi tiết.</p>
       </div>
-      <div class="button-group d-flex gap-3">
+      <div
+        v-if="userStore.hasPermission('WAREHOUSE_CREATE_BILL')"
+        class="button-group d-flex gap-3"
+      >
         <button
           @click="openModal('Phiếu nhập kho')"
           class="btn btn-import shadow-sm"
         >
           <i class="fas fa-plus-circle me-2"></i> NHẬP HÀNG MỚI
         </button>
+
+        <button
+          @click="openModal('Phiếu xuất hàng')"
+          class="btn btn-export shadow-sm"
+        >
+          <i class="fas fa-minus-circle me-2"></i> XUẤT HÀNG
+        </button>
+
         <button
           @click="openModal('Phiếu điều chỉnh')"
           class="btn btn-adjust shadow-sm"
@@ -181,7 +192,9 @@
                   {{
                     modalType === "Phiếu nhập kho"
                       ? "Số lượng nhập (+)"
-                      : "Số lượng (+/-)"
+                      : modalType === "Phiếu xuất hàng"
+                        ? "Số lượng xuất (-)"
+                        : "Số lượng (+/-)"
                   }}
                 </label>
                 <input
@@ -259,7 +272,7 @@
               v-model="reason"
               class="input-brown"
               rows="2"
-              placeholder="Ví dụ: Nhập hàng hè, Điều chỉnh do kiểm kho dư..."
+              placeholder="Nhập mô tả về phiếu ..."
             ></textarea>
           </div>
         </div>
@@ -379,7 +392,7 @@
             <div
               class="p-3 bg-light rounded-3 italic text-muted border-start border-4 border-brown"
             >
-              "{{ selectedBill.reason }}"
+              {{ selectedBill.reason }}
             </div>
           </div>
         </div>
@@ -402,9 +415,14 @@ import WarehouseService from "@/services/warehouse.service";
 import ProductService from "@/services/product.service";
 import SupplierService from "@/services/supplier.service";
 import Loading from "@/components/Loading.vue";
+import { useUserStore } from "@/stores/user";
 import Swal from "sweetalert2";
 export default {
   components: { Loading },
+  setup() {
+    const userStore = useUserStore();
+    return { userStore };
+  },
   data() {
     return {
       loading: true,
@@ -566,14 +584,15 @@ export default {
 
       if (result.isConfirmed) {
         this.loading = true;
-        const payload = {
-          type: this.modalType,
-          supplier_id: this.selectedSupplierId,
-          items: this.checkedItems,
-          reason: this.reason,
-        };
         try {
-          await WarehouseService.createBill(payload);
+          await WarehouseService.createBill({
+            type: this.modalType,
+            supplier_id: this.selectedSupplierId,
+            items: this.checkedItems,
+            reason: this.reason,
+          });
+
+          this.loading = false;
           await Swal.fire({
             icon: "success",
             title: "Thành công",
@@ -663,6 +682,16 @@ export default {
 .warehouse-header p {
   color: #8d6e63;
   margin-top: 5px;
+}
+
+.btn-export {
+  background-color: #795548;
+  color: white;
+}
+
+.btn-export:hover {
+  background-color: #533422;
+  color: #fff;
 }
 
 .phieu-xuat-hang {
