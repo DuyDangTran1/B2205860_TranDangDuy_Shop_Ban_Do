@@ -3,7 +3,8 @@ import statisticalService from "@/services/statistical.service";
 import Loading from "@/components/Loading.vue";
 import Swal from "sweetalert2";
 import * as XLSX from "xlsx";
-import { Bar, Pie, Line } from "vue-chartjs";
+import { useDebounceFn } from "@vueuse/core";
+import { Line, Pie, Bar } from "vue-chartjs";
 import {
   Chart as ChartJS,
   Title,
@@ -30,11 +31,11 @@ ChartJS.register(
 );
 
 export default {
-  components: { Loading, Bar, Pie, Line },
+  components: { Loading, Line, Pie, Bar },
   data() {
     return {
       loading: true,
-      // Mặc định lấy thống kê 30 ngày gần nhất
+      keyword: "",
       startDate: new Date(new Date().setDate(new Date().getDate() - 30))
         .toISOString()
         .substr(0, 10),
@@ -44,6 +45,7 @@ export default {
         totalOrders: 0,
         totalRefund: 0,
         allInventory: [],
+        warehouseInventory: [],
         topProducts: [],
         statusOverTime: [],
         newUsersOverTime: [],
@@ -56,16 +58,37 @@ export default {
       chartOptions: { responsive: true, maintainAspectRatio: false },
     };
   },
+  created() {
+    this.debouncedGetInventoryStats = useDebounceFn(() => {
+      this.getInventoryStats();
+      this.getInventoryWarehouseStats();
+    }, 500);
+  },
+
   methods: {
     async fetchStats() {
       this.loading = true;
       try {
-        const response = await statisticalService.getDashboardStats({
-          startDate: this.startDate,
-          endDate: this.endDate,
-        });
-        if (response.success) {
-          this.stats = response.data;
+        const [responseDas, resInventoryStats, resWarehouseStats] =
+          await Promise.all([
+            statisticalService.getDashboardStats({
+              startDate: this.startDate,
+              endDate: this.endDate,
+            }),
+            statisticalService.getInventoryStats(this.keyword),
+            statisticalService.getInventoryWarehouseStats({
+              keyword: this.keyword,
+            }),
+          ]);
+
+        if (
+          responseDas.success &&
+          resInventoryStats.success &&
+          resWarehouseStats.success
+        ) {
+          this.stats = responseDas.data;
+          this.stats.allInventory = resInventoryStats.data.allInventory;
+          this.stats.warehouseInventory = resWarehouseStats.data.allInventory;
           this.renderCharts();
         }
       } catch (e) {
@@ -77,7 +100,6 @@ export default {
     },
 
     renderCharts() {
-      //BIỂU ĐỒ ĐƯỜNG (Trạng thái đơn hàng)
       const rawData = this.stats.statusOverTime || [];
       const dates = [...new Set(rawData.map((item) => item._id.date))].sort();
       const statuses = [
@@ -103,7 +125,6 @@ export default {
         })),
       };
 
-      //BIỂU ĐỒ CỘT (Người dùng mới)
       this.userBarData = {
         labels: this.stats.newUsersOverTime.map((u) => u._id),
         datasets: [
@@ -115,7 +136,6 @@ export default {
         ],
       };
 
-      //BIỂU ĐỒ TRÒN (Doanh thu danh mục)
       const categoryData = this.stats.revenueByCategory || [];
       this.categoryPieData = {
         labels: categoryData.map((c) => c._id),
@@ -139,7 +159,6 @@ export default {
       return new Intl.NumberFormat("vi-VN").format(v || 0) + "đ";
     },
 
-    // HÀM XUẤT EXCEL
     exportToExcel() {
       try {
         const workbook = XLSX.utils.book_new();
@@ -153,11 +172,13 @@ export default {
         const wsTop = XLSX.utils.json_to_sheet(topData);
         XLSX.utils.book_append_sheet(workbook, wsTop, "Top_Ban_Chay");
 
-        const invData = this.stats.allInventory.map((p, i) => ({
+        const invData = this.stats.warehouseInventory.map((p, i) => ({
           STT: i + 1,
           "Tên Biến Thể": p.full_name,
-          "Số Lượng Tồn": p.totalQty,
-          "Đánh Giá": p.totalQty < 10 ? "Cần nhập gấp" : "Ổn định",
+          "Số Lượng Nhập": p.totalImported,
+          "Số Lượng Xuất": p.totalExported,
+          "Số Lượng Tồn": p.currentStock,
+          "Đánh Giá": p.currentStock < 10 ? "Cần nhập gấp" : "Ổn định",
         }));
         const wsInv = XLSX.utils.json_to_sheet(invData);
         XLSX.utils.book_append_sheet(workbook, wsInv, "Ton_Kho_Chi_Tiet");
@@ -182,7 +203,6 @@ export default {
         const wsSum = XLSX.utils.json_to_sheet(summaryData);
         XLSX.utils.book_append_sheet(workbook, wsSum, "Tong_Quan_Chung");
 
-        // Lưu file
         XLSX.writeFile(
           workbook,
           `Bao_Cao_Tong_Hop_SHOPDD_${this.endDate}.xlsx`,
@@ -198,6 +218,30 @@ export default {
           text: "Đã có lỗi xảy ra khi xuất file thống kê. Vui lòng thử lại sao!",
           icon: "error",
         });
+      }
+    },
+
+    async getInventoryStats() {
+      try {
+        const res = await statisticalService.getInventoryStats(this.keyword);
+        if (res.success) {
+          this.stats.allInventory = res.data.allInventory;
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    },
+
+    async getInventoryWarehouseStats() {
+      try {
+        const res = await statisticalService.getInventoryWarehouseStats({
+          keyword: this.keyword,
+        });
+        if (res.success) {
+          this.stats.warehouseInventory = res.data.allInventory;
+        }
+      } catch (error) {
+        console.error(error);
       }
     },
   },
@@ -313,7 +357,7 @@ export default {
 
       <div class="card border-0 shadow-sm rounded-4 p-4 mb-4">
         <h6 class="fw-bold mb-3 text-brown">
-          <i class="fas fa-fire me-2"></i>Sản phẩm bán chạy nhất
+          <i class="fas fa-fire me-2"></i>Top 5 sản phẩm bán chạy nhất
         </h6>
         <div class="table-responsive">
           <table class="table table-hover align-middle border-0">
@@ -351,10 +395,24 @@ export default {
         </div>
       </div>
 
-      <div class="card border-0 shadow-sm rounded-4 p-4">
+      <div class="card border-0 shadow-sm rounded-4 p-4 mb-4">
         <h6 class="fw-bold mb-3 text-brown">
           <i class="fas fa-boxes me-2"></i>Chi tiết tồn kho biến thể
         </h6>
+
+        <div class="input-group mb-2">
+          <span class="input-group-text bg-white border-end-0">
+            <i class="fas fa-search text-muted"></i>
+          </span>
+          <input
+            v-model="keyword"
+            v-on:input="debouncedGetInventoryStats"
+            type="text"
+            class="form-control border-start-0 ps-0"
+            placeholder="Tìm theo tên sản phẩm"
+          />
+        </div>
+
         <div class="table-responsive" style="max-height: 400px">
           <table class="table table-hover align-middle small">
             <thead class="bg-light sticky-top">
@@ -396,6 +454,72 @@ export default {
                       p.totalQty < 10
                         ? "Cần nhập gấp"
                         : p.totalQty < 30
+                          ? "Sắp hết"
+                          : "Ổn định"
+                    }}
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card border-0 shadow-sm rounded-4 p-4">
+        <h6 class="fw-bold mb-3 text-brown">
+          <i class="fas fa-exchange-alt me-2"></i>Chi tiết Xuất - Nhập - Tồn kho
+          biến thể
+        </h6>
+
+        <div class="table-responsive" style="max-height: 400px">
+          <table class="table table-hover align-middle small mb-0">
+            <thead class="bg-light sticky-top">
+              <tr>
+                <th>Sản phẩm biến thể</th>
+                <th class="text-center" width="130">Số lượng Nhập</th>
+                <th class="text-center" width="130">Số lượng Xuất</th>
+                <th class="text-center" width="130">Tồn hiện tại</th>
+                <th class="text-center" width="130">Mức độ</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="p in stats.warehouseInventory" :key="p._id">
+                <td>
+                  <div class="d-flex align-items-center">
+                    <img
+                      :src="`http://localhost:3000/${p.image}`"
+                      width="35"
+                      height="35"
+                      class="me-2 rounded border shadow-sm"
+                      @error="(e) => (e.target.src = 'https://placehold.co/35')"
+                    />
+                    <span class="fw-bold">{{ p.full_name }}</span>
+                  </div>
+                </td>
+                <td class="text-center fw-bold text-info">
+                  {{ p.totalImported }}
+                </td>
+                <td class="text-center fw-bold text-danger">
+                  {{ p.totalExported }}
+                </td>
+                <td class="text-center fw-bold text-success">
+                  {{ p.currentStock }}
+                </td>
+                <td class="text-center">
+                  <span
+                    :class="[
+                      'badge rounded-pill',
+                      p.currentStock < 10
+                        ? 'bg-danger'
+                        : p.currentStock < 30
+                          ? 'bg-warning'
+                          : 'bg-success',
+                    ]"
+                  >
+                    {{
+                      p.currentStock < 10
+                        ? "Cần nhập gấp"
+                        : p.currentStock < 30
                           ? "Sắp hết"
                           : "Ổn định"
                     }}
