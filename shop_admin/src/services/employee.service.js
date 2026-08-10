@@ -21,6 +21,12 @@ class Employee {
     (await this.privateApi.post("/change-password", data)).data;
 
   logOut = async () => (await this.privateApi.get("/log_out")).data;
+
+  grantPermissions = async (id, data) =>
+    (await this.privateApi.patch(`/grantPermissions/${id}`, data)).data;
+
+  getPermissionsList = async () =>
+    (await this.privateApi.get(`/permission_list`)).data;
 }
 
 export default new Employee();
