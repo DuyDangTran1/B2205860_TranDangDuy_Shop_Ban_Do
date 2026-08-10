@@ -1,6 +1,6 @@
 import axios from "axios";
-import router from "@/router";
-
+// import router from "@/router";
+import { useUserStore } from "@/stores/user";
 // Biến quản lý trạng thái Refresh
 let isRefreshing = false;
 let failedQueue = [];
@@ -38,11 +38,12 @@ export default (baseURL) => {
     withCredentials: true,
   });
 
-  // 3. Response Interceptor
+  //Response Interceptor
   instance.interceptors.response.use(
     (response) => response,
     async (error) => {
       const originalRequest = error.config;
+
       const token = sessionStorage.getItem("accessToken");
 
       // Nếu lỗi 403 (Token hết hạn) và có token cũ để refresh
@@ -65,11 +66,15 @@ export default (baseURL) => {
 
         try {
           const res = await refreshClient.post("/refresh-token");
-          const { accessToken } = res.data;
+          const { accessToken, permissions } = res.data;
+
+          sessionStorage.setItem("accessToken", accessToken);
+          const userStore = useUserStore();
+          userStore.setPermissions(permissions);
 
           sessionStorage.setItem("accessToken", accessToken);
 
-          // GIẢI PHÓNG HÀNG ĐỢI (Cấp token mới cho mấy thằng đang đợi)
+          // GIẢI PHÓNG HÀNG ĐỢI
           processQueue(null, accessToken);
           isRefreshing = false;
 
@@ -82,7 +87,7 @@ export default (baseURL) => {
           isRefreshing = false;
 
           sessionStorage.clear();
-          router.push({ name: "Login" });
+          window.location.href = "/login";
           return Promise.reject(refreshError);
         }
       }
