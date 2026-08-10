@@ -4,6 +4,7 @@ const EmployeeService = require("../services/employee.service");
 const MongoDB = require("../utils/mongodb.util");
 const config = require("../config/index");
 const jwt = require("jsonwebtoken");
+const { PERMISSION_GROUPS } = require("../config/pemissions");
 const { ObjectId } = require("mongodb");
 exports.Authentication = async (req, res, next) => {
   console.log(req.headers);
@@ -55,4 +56,37 @@ exports.isAdmin = async (req, res, next) => {
   if (req.user.role !== "Quản trị viên")
     return next(new ApiError(401, "Không thể sử dụng tài nguyên"));
   next();
+};
+
+exports.authorize = (requiredPermission) => {
+  return (req, res, next) => {
+    try {
+      const user = req.user;
+      if (user.role === "Quản trị viên") {
+        return next();
+      }
+
+      const userPermissions = user.permissions || [];
+      if (userPermissions.includes(requiredPermission)) {
+        return next();
+      }
+
+      for (const [groupKey, groupInfo] of Object.entries(PERMISSION_GROUPS)) {
+        const userHasThisGroup = userPermissions.includes(groupKey);
+
+        const groupContainsThisPermission =
+          groupInfo.list.includes(requiredPermission);
+
+        if (userHasThisGroup && groupContainsThisPermission) {
+          return next();
+        }
+      }
+
+      return next(
+        new ApiError(403, `Bạn không có quyền thực hiện hành động này.`),
+      );
+    } catch (error) {
+      return next(new ApiError(500, "Lỗi kiểm tra quyền hạn"));
+    }
+  };
 };
