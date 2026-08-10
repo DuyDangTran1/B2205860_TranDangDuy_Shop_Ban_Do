@@ -5,7 +5,12 @@ const Upload = require("../middelwares/multer.middelware");
 const Authentication = require("../middelwares/Authentication.middleware");
 router
   .route("/")
-  .post(Upload.createUpload("products").single("image"), products.create)
+  .post(
+    Authentication.Authentication,
+    Authentication.authorize("PRODUCT_CREATE"),
+    Upload.createUpload("products").single("image"),
+    products.create,
+  )
   .get(products.getAllProduct);
 
 router
@@ -20,14 +25,23 @@ router.route("/:category_name").get(products.findAllByCategory);
 router
   .route("/detail/:id")
   .get(products.getProductById)
-  .put(Upload.createUpload("products").single("image"), products.update)
-  .delete(Authentication.Authentication, products.delete);
+  .put(
+    Authentication.Authentication,
+    Authentication.authorize("PRODUCT_UPDATE"),
+    Upload.createUpload("products").single("image"),
+    products.update,
+  )
+  .delete(
+    Authentication.Authentication,
+    Authentication.authorize("PRODUCT_DELETE"),
+    products.delete,
+  );
 
 router
   .route("/set-discount/:id")
   .patch(
     Authentication.Authentication,
-    Authentication.isAdmin,
+    Authentication.authorize("PRODUCT_SET_DISCOUNT"),
     products.setDiscount,
   );
 

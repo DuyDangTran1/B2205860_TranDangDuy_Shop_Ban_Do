@@ -5,7 +5,13 @@ const Authentication = require("../middelwares/Authentication.middleware");
 const Upload = require("../middelwares/multer.middelware");
 router.route("/register").post(UserController.register);
 router.route("/login").post(UserController.login);
-router.route("/").get(UserController.getAllUser);
+router
+  .route("/")
+  .get(
+    Authentication.Authentication,
+    Authentication.authorize("USER_VIEW"),
+    UserController.getAllUser,
+  );
 router
   .route("/updateInformationUser")
   .patch(
@@ -26,7 +32,11 @@ router.route("/google-login").post(UserController.loginGoogle);
 
 router
   .route("/:id")
-  .patch(Authentication.Authentication, UserController.updateStatusAccount);
+  .patch(
+    Authentication.Authentication,
+    Authentication.authorize("USER_UPDATE_STATUS_ACCOUNT"),
+    UserController.updateStatusAccount,
+  );
 
 router.get(
   "/waiting-list",

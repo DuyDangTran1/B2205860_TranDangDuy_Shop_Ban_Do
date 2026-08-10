@@ -36,6 +36,7 @@ exports.createEmployee = async (req, res, next) => {
       phone: req.body.phone,
       password: await bcrypt.hash(req.body.password, 10),
       role: req.body.role,
+      permissions: req.body.permissions || [],
     };
 
     await employeeService.createEmployee(employee);
@@ -74,9 +75,14 @@ exports.loginEmployee = async (req, res, next) => {
       return next(new ApiError(403, "Tài khoản đã bị khóa"));
 
     const accessToken = jwt.sign(
-      { id: employee._id, email: account.email, role: employee.role },
+      {
+        id: employee._id,
+        email: account.email,
+        role: employee.role,
+        permissions: employee.permissions || [],
+      },
       config.key.secretKey,
-      { expiresIn: "1h" },
+      { expiresIn: "2m" },
     );
 
     const refreshToken = crypto.randomBytes(24).toString("hex");
@@ -87,7 +93,7 @@ exports.loginEmployee = async (req, res, next) => {
       refreshToken: refreshToken,
     });
 
-    console.log(employee);
+    // console.log(employee);
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: false,
@@ -96,10 +102,12 @@ exports.loginEmployee = async (req, res, next) => {
     });
 
     return res.json({
+      _id: employee._id,
       accessToken: accessToken,
       name: employee.name,
       role: employee.role,
       image_url: employee.url_image,
+      permissions: employee.permissions || [],
     });
   } catch (error) {
     console.log(error);
@@ -243,9 +251,14 @@ exports.refreshToken = async (req, res, next) => {
     if (employee && employee.block == true)
       return next(new ApiError(403, "Tài khoản đã bị khóa"));
     const accessToken = jwt.sign(
-      { id: employee._id, email: employee.email, role: employee.role },
+      {
+        id: employee._id,
+        email: employee.email,
+        role: employee.role,
+        permissions: employee.permissions || [],
+      },
       config.key.secretKey,
-      { expiresIn: "1h" },
+      { expiresIn: "2m" },
     );
 
     const newRefreshToken = crypto.randomBytes(24).toString("hex");
@@ -265,6 +278,7 @@ exports.refreshToken = async (req, res, next) => {
     return res.json({
       success: true,
       accessToken: accessToken,
+      permissions: employee.permissions || [],
     });
   } catch (error) {
     return next(new ApiError(403, "Refresh Token không hợp lệ hoặc hết hạn"));
@@ -282,4 +296,65 @@ exports.logOut = async (req, res, next) => {
   } catch (error) {
     return next(new ApiError(500, "Lỗi server"));
   }
+};
+
+const { PERMISSIONS, PERMISSIONS_GROUP } = require("../config/pemissions");
+
+exports.grantPermissions = async (req, res, next) => {
+  const { id } = req.params;
+  const { permissions } = req.body;
+
+  // console.log(permissions);
+
+  if (!Array.isArray(permissions)) {
+    return next(new ApiError(400, "Danh sách quyền phải là một mảng chuỗi"));
+  }
+
+  try {
+    const employeeService = new EmployeeService(MongoDB.client);
+
+    const employee = await employeeService.findById(id);
+    if (!employee) return next(new ApiError(404, "Không tìm thấy nhân viên"));
+
+    const validSingleCodes = Object.values(PERMISSIONS).map((p) => p.code);
+
+    const validGroupCodes = Object.values(PERMISSIONS_GROUP).map((g) => g.code);
+
+    const allValidCodes = [...validSingleCodes, ...validGroupCodes];
+
+    const isAllValid = permissions.every((p) => allValidCodes.includes(p));
+
+    if (!isAllValid) {
+      return next(
+        new ApiError(
+          400,
+          "Dữ liệu chứa mã quyền không hợp lệ hoặc đã bị thay đổi",
+        ),
+      );
+    }
+
+    await employeeService.updatePermissions(id, permissions);
+
+    const io = req.app.get("socketio");
+    if (io) {
+      io.to(String(id)).emit("AUTHORIZATION_UPDATED", {
+        permissions: permissions,
+      });
+      // console.log(`đã gửi quyền: ${id}`);
+    }
+    return res.json({
+      message: `Đã cập nhật ${permissions.length} quyền hạn cho nhân viên ${employee.name}`,
+      success: true,
+    });
+  } catch (error) {
+    console.error(error);
+    return next(new ApiError(500, "Lỗi server khi thực hiện cấp quyền"));
+  }
+};
+
+exports.getPermissionsList = (req, res) => {
+  return res.status(200).json({
+    singlePermissions: PERMISSIONS,
+    groupPermissions: PERMISSIONS_GROUP,
+  });
 };

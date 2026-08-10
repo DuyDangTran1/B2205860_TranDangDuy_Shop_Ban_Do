@@ -6,12 +6,12 @@ router
   .route("/")
   .post(
     Authentication.Authentication,
-    Authentication.isStaff,
+    Authentication.authorize("WAREHOUSE_CREATE_BILL"),
     WareHouseController.createBill,
   )
   .get(
     Authentication.Authentication,
-    Authentication.isStaff,
+    Authentication.authorize("WAREHOUSE_VIEW"),
     WareHouseController.getAllBill,
   );
 

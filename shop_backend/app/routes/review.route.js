@@ -18,14 +18,14 @@ router.get("/detail/:id", ReviewController.getReviewDetail);
 router.get(
   "/admin/all",
   Authentication.Authentication,
-  Authentication.isStaff,
+  Authentication.authorize("REVIEW_VIEW"),
   ReviewController.adminGetAllReviews,
 );
 
 router.patch(
   "/admin/status/:id",
   Authentication.Authentication,
-  Authentication.isStaff,
+  Authentication.authorize("REVIEW_TOGGLE_STATUS"),
   ReviewController.updateReviewVisibility,
 );
 

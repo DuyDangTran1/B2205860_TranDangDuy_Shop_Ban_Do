@@ -23,7 +23,7 @@ router
   .route("/")
   .get(
     Authentication.Authentication,
-    Authentication.isStaff,
+    Authentication.authorize("ORDER_VIEW"),
     OrderController.getAllOrders,
   );
 
@@ -35,7 +35,7 @@ router
   .route("/updateStatus/:id")
   .patch(
     Authentication.Authentication,
-    Authentication.isStaff,
+    Authentication.authorize("ORDER_UPDATE_STATUS"),
     OrderController.updateStatus,
   );
 
@@ -43,7 +43,7 @@ router
   .route("/updateStatusCOD/:id")
   .patch(
     Authentication.Authentication,
-    Authentication.isStaff,
+    Authentication.authorize("ORDER_UPDATE_STATUS"),
     OrderController.updateStatusCOD,
   );
 
@@ -55,7 +55,23 @@ router
   .route("/confirm_refund/:id")
   .patch(
     Authentication.Authentication,
-    Authentication.isStaff,
+    Authentication.authorize("ORDER_UPDATE_STATUS"),
     OrderController.confirmRefund,
+  );
+
+router
+  .route("/requestExchange")
+  .post(
+    Authentication.Authentication,
+    Authentication.authorize("ORDER_REQUEST_EXCHANGE"),
+    OrderController.requestExchange,
+  );
+
+router
+  .route("/confirmExchange/:id")
+  .patch(
+    Authentication.Authentication,
+    Authentication.authorize("ORDER_CONFIRM_EXCHANGE"),
+    OrderController.confirmExchange,
   );
 module.exports = router;

@@ -12,7 +12,7 @@ router
   )
   .post(
     Authentication.Authentication,
-    Authentication.isAdmin,
+    Authentication.authorize("EMPLOYEE_CREATE"),
     EmployeeController.createEmployee,
   );
 
@@ -24,7 +24,7 @@ router
   .route("/updateStatusAccount/:id")
   .patch(
     Authentication.Authentication,
-    Authentication.isAdmin,
+    Authentication.authorize("EMPLOYEE_UPDATE_STATUS"),
     EmployeeController.updateStatusAccount,
   );
 router.route("/login").post(EmployeeController.loginEmployee);
@@ -54,4 +54,19 @@ router
     EmployeeController.getInforEmployee,
   );
 
+router
+  .route("/grantPermissions/:id")
+  .patch(
+    Authentication.Authentication,
+    Authentication.authorize("EMPLOYEE_GRANT"),
+    EmployeeController.grantPermissions,
+  );
+
+router
+  .route("/permission_list")
+  .get(
+    Authentication.Authentication,
+    Authentication.isStaff,
+    EmployeeController.getPermissionsList,
+  );
 module.exports = router;

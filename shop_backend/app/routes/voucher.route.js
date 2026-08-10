@@ -11,7 +11,7 @@ router
   .get(AuthenticationMiddleware.Authentication, voucher.getAll)
   .post(
     AuthenticationMiddleware.Authentication,
-    AuthenticationMiddleware.isAdmin,
+    AuthenticationMiddleware.authorize("VOUCHER_CREATE"),
     voucher.create,
   );
 
@@ -19,7 +19,7 @@ router
   .route("/list_voucher")
   .get(
     AuthenticationMiddleware.Authentication,
-    AuthenticationMiddleware.isAdmin,
+    AuthenticationMiddleware.authorize("VOUCHER_VIEW"),
     voucher.getAllVouchersAdmin,
   );
 
@@ -27,12 +27,12 @@ router
   .route("/:id")
   .put(
     AuthenticationMiddleware.Authentication,
-    AuthenticationMiddleware.isAdmin,
+    AuthenticationMiddleware.authorize("VOUCHER_UPDATE"),
     voucher.update,
   )
   .patch(
     AuthenticationMiddleware.Authentication,
-    AuthenticationMiddleware.isAdmin,
+    AuthenticationMiddleware.authorize("VOUCHER_CHANGE_STATUS"),
     voucher.changeStatus,
   );
 
