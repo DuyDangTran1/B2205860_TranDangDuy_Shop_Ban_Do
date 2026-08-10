@@ -20,6 +20,11 @@ export default {
       loading: false,
       accessToken: sessionStorage.getItem("accessToken") || null,
       userId: null,
+      suggestions: [
+        "Chính sách đổi trả hàng như thế nào?",
+        "Tư vấn cho mình phối đồ đi chơi với!",
+        "Đồ thể thao",
+      ],
     };
   },
 
@@ -54,6 +59,7 @@ export default {
                 role: "ai",
                 content: data.content,
               });
+              this.suggestions = [];
               this.scrollToBottom();
             }
           });
@@ -114,6 +120,8 @@ export default {
       this.loading = true;
       this.scrollToBottom();
 
+      this.suggestions = [];
+
       socket.emit("user_send_message", {
         userId: this.userId,
         content: userMessage,
@@ -129,12 +137,18 @@ export default {
           role: "ai",
           content: "Nhân viên sẽ tư vấn cho bạn sau ít phút nữa.",
         });
+        this.suggestions = [];
       } finally {
         this.loading = false;
         this.scrollToBottom();
       }
     },
 
+    async selectSuggestion(text) {
+      if (this.loading) return;
+      this.input = text;
+      await this.sendMessage();
+    },
     scrollToBottom() {
       this.$nextTick(() => {
         const body = this.$refs.chatBody;
@@ -189,6 +203,20 @@ export default {
       </div>
     </div>
 
+    <div
+      v-if="suggestions.length > 0 && !loading && !input.trim()"
+      class="chat-suggestions"
+    >
+      <button
+        v-for="(text, idx) in suggestions"
+        :key="idx"
+        class="suggestion-chip"
+        @click="selectSuggestion(text)"
+      >
+        {{ text }}
+      </button>
+    </div>
+
     <div class="chat-footer">
       <input
         v-model="input"
@@ -203,7 +231,6 @@ export default {
 </template>
 
 <style scoped>
-/* Widget */
 .chat-widget {
   position: fixed;
   right: 20px;
@@ -242,6 +269,41 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.chat-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 15px;
+  background: #fdfaf8;
+  border-top: 1px dashed #eeded5;
+}
+
+.chat-suggestions::-webkit-scrollbar {
+  display: none;
+}
+
+.suggestion-chip {
+  background: white;
+  color: #533422;
+  border: 1px solid #ac7657;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 500;
+  box-shadow: 0 2px 6px rgba(83, 52, 34, 0.05);
+
+  white-space: normal;
+  text-align: left;
+}
+.suggestion-chip:hover {
+  background: #ac7657;
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(172, 118, 87, 0.2);
 }
 
 .message-item {
@@ -335,12 +397,13 @@ export default {
   margin-top: 5px;
 }
 
-/* Footer */
 .chat-footer {
   padding: 10px;
   display: flex;
   gap: 8px;
   border-top: 1px solid #eee;
+  background: white;
+  border-radius: 0 0 15px 15px;
 }
 .chat-footer input {
   flex: 1;
@@ -348,6 +411,10 @@ export default {
   border-radius: 20px;
   padding: 6px 15px;
   outline: none;
+  font-size: 14px;
+}
+.chat-footer input:focus {
+  border-color: #ac7657;
 }
 .send-btn {
   background: none;
@@ -355,15 +422,18 @@ export default {
   color: #ac7657;
   font-size: 18px;
   cursor: pointer;
+  transition: transform 0.2s;
+}
+.send-btn:hover {
+  transform: scale(1.1);
 }
 .close-icon {
   cursor: pointer;
 }
-
-/* Dots */
 .typing-dots span {
   animation: blink 1s infinite;
   margin: 0 2px;
+  font-weight: bold;
 }
 @keyframes blink {
   0% {
