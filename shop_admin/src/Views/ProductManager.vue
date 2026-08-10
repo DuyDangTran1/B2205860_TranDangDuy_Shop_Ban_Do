@@ -2,10 +2,15 @@
 import productService from "@/services/product.service";
 import categoryService from "@/services/category.service";
 import Loading from "@/components/Loading.vue";
+import { useUserStore } from "@/stores/user";
 import Swal from "sweetalert2";
 
 export default {
   components: { Loading },
+  setup() {
+    const userStore = useUserStore();
+    return { userStore };
+  },
   data() {
     return {
       products: [],
@@ -143,6 +148,7 @@ export default {
       <div class="d-flex justify-content-between align-items-center mb-4">
         <h4 class="fw-bold text-brown m-0 text-uppercase">Kho Sản Phẩm</h4>
         <button
+          v-if="userStore.hasPermission('PRODUCT_CREATE')"
           class="btn btn-brown px-4 py-2 shadow-sm fw-bold rounded-pill"
           @click="goToAdd"
         >
@@ -167,7 +173,10 @@ export default {
           </div>
         </div>
 
-        <div class="col-md-auto ms-auto border-start ps-3">
+        <div
+          v-if="userStore.hasPermission('PRODUCT_SET_DISCOUNT')"
+          class="col-md-auto ms-auto border-start ps-3"
+        >
           <button
             class="btn btn-outline-danger px-3 rounded-pill fw-bold btn-sm"
             @click="openGeneralDiscountModal"
@@ -265,6 +274,7 @@ export default {
                       <i class="fas fa-eye"></i>
                     </button>
                     <button
+                      v-if="userStore.hasPermission('PRODUCT_DELETE')"
                       @click="deleteProduct(prod._id)"
                       class="btn btn-white text-danger"
                       title="Xóa"

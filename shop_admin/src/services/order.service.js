@@ -16,6 +16,14 @@ class Order {
   confirmRefund = async (id) => {
     return (await this.privateApi.patch(`/confirm_refund/${id}`, {})).data;
   };
+
+  requestExchange = async (data) => {
+    return (await this.privateApi.post("/requestExchange", data)).data;
+  };
+
+  confirmExchange = async (id) => {
+    return (await this.privateApi.patch(`/confirmExchange/${id}`, {})).data;
+  };
 }
 
 export default new Order();

@@ -447,20 +447,36 @@ Gợi ý phối đồ (Outfit): Sản phẩm này cực kỳ phù hợp khi mặ
   async getOutfitSuggestions(currentProduct) {
     if (!currentProduct || !currentProduct.embedding) return [];
 
+    const allTags = [
+      ...(currentProduct.tag || []),
+      ...(currentProduct.collection_tags || []),
+    ];
+
+    const isMale = allTags.some((t) => t.toLowerCase().includes("nam"));
+    const isFemale = allTags.some((t) => t.toLowerCase().includes("nữ"));
+
+    let genderFilter = {};
+    if (isMale && !isFemale) {
+      genderFilter = { tag: { $elemMatch: { $regex: "nam", $options: "i" } } };
+    } else if (isFemale && !isMale) {
+      genderFilter = { tag: { $elemMatch: { $regex: "nữ", $options: "i" } } };
+    }
+
     const pipeline = [
       {
         $vectorSearch: {
           index: "vector_index",
           path: "embedding",
           queryVector: currentProduct.embedding,
-          numCandidates: 100,
-          limit: 10,
+          numCandidates: 150,
+          limit: 20,
         },
       },
       {
         $match: {
           _id: { $ne: currentProduct._id },
-          category_id: { $ne: currentProduct.category_id }, // không lấy cùng loại
+          category_id: { $ne: currentProduct.category_id },
+          ...genderFilter,
         },
       },
       {
@@ -471,7 +487,6 @@ Gợi ý phối đồ (Outfit): Sản phẩm này cực kỳ phù hợp khi mặ
           as: "variants_data",
         },
       },
-
       {
         $addFields: {
           count_sell: { $sum: "$variants_data.sold_count" },
@@ -521,6 +536,53 @@ Gợi ý phối đồ (Outfit): Sản phẩm này cực kỳ phù hợp khi mặ
   // đếm số sản phẩm
   async countProduct() {
     return this.Product.countDocuments();
+  }
+
+  async getAllProductInventory(keyword = "") {
+    let pipeline = [];
+
+    if (keyword && keyword.trim()) {
+      if (keyword && keyword.trim()) {
+        pipeline.push({
+          $match: {
+            product_name: {
+              $regex: keyword.trim(),
+              $options: "i",
+            },
+          },
+        });
+      }
+    }
+
+    pipeline.push(
+      {
+        $lookup: {
+          from: "Product_variant",
+          localField: "_id",
+          foreignField: "product_id",
+          as: "product_variant_info",
+        },
+      },
+      { $unwind: "$product_variant_info" },
+      {
+        $project: {
+          // Nối chuỗi: Tên SP + Size + Màu
+          full_name: {
+            $concat: [
+              "$product_name",
+              " - Size: ",
+              { $ifNull: ["$product_variant_info.size_name", "N/A"] },
+              " - Màu: ",
+              { $ifNull: ["$product_variant_info.color_name", "N/A"] },
+            ],
+          },
+          totalQty: "$product_variant_info.quantity",
+          image: "$product_variant_info.image_url",
+        },
+      },
+      { $sort: { totalQty: 1 } }, // Hàng ít xếp lên đầu
+    );
+    return await this.Product.aggregate(pipeline).toArray();
   }
 }
 

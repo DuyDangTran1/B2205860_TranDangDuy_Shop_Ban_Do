@@ -72,7 +72,7 @@ exports.login = async (req, res, next) => {
     const accessToken = jwt.sign(
       { id: user._id, email: account.email, role: user.role },
       config.key.secretKey,
-      { expiresIn: "2m" },
+      { expiresIn: "10h" },
     );
 
     const refreshToken = crypto.randomBytes(24).toString("hex");

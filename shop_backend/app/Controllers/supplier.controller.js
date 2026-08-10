@@ -77,6 +77,7 @@ exports.getAllSupplier = async (req, res, next) => {
     const suppliers = await supplier_service.getAllSupplier();
     return res.json({ suppliers: suppliers });
   } catch (error) {
+    console.log(error);
     return next(new ApiError(500, "Lỗi server"));
   }
 };

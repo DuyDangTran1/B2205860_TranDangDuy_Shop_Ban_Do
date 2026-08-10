@@ -146,6 +146,111 @@ class ProductVariant {
       product_id: ObjectId.isValid(id) ? new ObjectId(id) : null,
     });
   }
+
+  async findVariantsByProductId(product_id) {
+    return await this.Product_variant.find({
+      product_id: ObjectId.isValid(product_id)
+        ? new ObjectId(product_id)
+        : null,
+    }).toArray();
+  }
+
+  async getAllProductInventoryWarehouse(keyword = "") {
+    const matchFilter = {};
+    if (keyword) {
+      matchFilter["product_info.product_name"] = {
+        $regex: keyword,
+        $options: "i",
+      };
+    }
+
+    return await this.Product_variant.aggregate([
+      {
+        $lookup: {
+          from: "Products",
+          localField: "product_id",
+          foreignField: "_id",
+          as: "product_info",
+        },
+      },
+      { $unwind: "$product_info" },
+      { $match: matchFilter },
+      {
+        $lookup: {
+          from: "WareHouse",
+          let: { vId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                type: "Phiếu nhập kho",
+              },
+            },
+            { $unwind: "$items" },
+            {
+              $match: {
+                $expr: { $eq: ["$items.variant_id", "$$vId"] },
+              },
+            },
+            {
+              $group: {
+                _id: null,
+                total: { $sum: "$items.quantity" },
+              },
+            },
+          ],
+          as: "import_info",
+        },
+      },
+      {
+        $lookup: {
+          from: "WareHouse",
+          let: { vId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                type: { $in: ["Phiếu xuất kho", "Phiếu xuất hàng"] },
+              },
+            },
+            { $unwind: "$items" },
+            {
+              $match: {
+                $expr: { $eq: ["$items.variant_id", "$$vId"] },
+              },
+            },
+            {
+              $group: {
+                _id: null,
+                total: { $sum: "$items.quantity" },
+              },
+            },
+          ],
+          as: "export_info",
+        },
+      },
+      {
+        $project: {
+          full_name: {
+            $concat: [
+              "$product_info.product_name",
+              " - Size: ",
+              { $ifNull: ["$size_name", "N/A"] },
+              " - Màu: ",
+              { $ifNull: ["$color_name", "N/A"] },
+            ],
+          },
+          image: "$image_url",
+          currentStock: "$quantity",
+          totalImported: {
+            $ifNull: [{ $arrayElemAt: ["$import_info.total", 0] }, 0],
+          },
+          totalExported: {
+            $ifNull: [{ $arrayElemAt: ["$export_info.total", 0] }, 0],
+          },
+        },
+      },
+      { $sort: { currentStock: 1 } },
+    ]).toArray();
+  }
 }
 
 module.exports = ProductVariant;

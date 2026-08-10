@@ -313,7 +313,6 @@ exports.getOutfitFromLastOrder = async (req, res, next) => {
     if (!userId)
       return next(new ApiError(401, "Bạn cần đăng nhập để xem gợi ý"));
 
-    // Khởi tạo các Service
     const orderService = new OrderService(MongoDB.client);
     const variantService = new ProductVariantService(MongoDB.client);
     const productService = new ProductService(MongoDB.client);

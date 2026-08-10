@@ -1,6 +1,12 @@
 <script>
 import employeeService from "@/services/employee.service";
+import { useUserStore } from "@/stores/user";
+import socket from "@/plugins/socket";
 export default {
+  setup() {
+    const userStore = useUserStore();
+    return { userStore };
+  },
   data() {
     return {
       adminName: sessionStorage.getItem("name") || "Admin",
@@ -30,6 +36,22 @@ export default {
         this.$router.push({ name: "Login" });
       }
     },
+    listenToAuthorizationUpdate() {
+      socket.on("AUTHORIZATION_UPDATED", (data) => {
+        this.userStore.setPermissions(data.permissions);
+      });
+    },
+  },
+
+  mounted() {
+    const employeeId =
+      sessionStorage.getItem("employeeId") || this.userStore._id;
+
+    if (employeeId) {
+      socket.emit("join_room", employeeId);
+    }
+
+    this.listenToAuthorizationUpdate();
   },
 };
 </script>
@@ -48,10 +70,13 @@ export default {
                 :to="{ name: 'Dashboard' }"
                 class="nav-link rounded-3"
               >
-                <i class="fas fa-chart-line me-2"></i> Tổng quan
+                <i class="fas fa-home me-2"></i> Trang chủ chính
               </router-link>
             </li>
-            <li v-if="adminRole === 'Quản trị viên'" class="nav-item">
+            <li
+              v-if="userStore.hasPermission('EMPLOYEE_VIEW')"
+              class="nav-item"
+            >
               <router-link :to="{ name: 'Staff' }" class="nav-link rounded-3">
                 <i class="fas fa-users me-2"></i> Quản lý nhân viên
               </router-link>
@@ -67,58 +92,70 @@ export default {
                 <span><i class="fas fa-box me-2"></i> Danh mục sản phẩm</span>
                 <i class="fas fa-chevron-down small"></i>
               </a>
-
               <div class="collapse px-3" id="productSubmenu">
                 <ul class="nav flex-column gap-1 mt-1 border-start ms-3 ps-2">
-                  <li class="nav-item">
+                  <li
+                    v-if="userStore.hasPermission('PRODUCT_VIEW')"
+                    class="nav-item"
+                  >
                     <router-link
                       :to="{ name: 'Products' }"
                       class="nav-link py-2 small"
+                      >Sản phẩm</router-link
                     >
-                      Sản phẩm
-                    </router-link>
                   </li>
-                  <li class="nav-item">
+                  <li
+                    v-if="userStore.hasPermission('CATEGORY_VIEW')"
+                    class="nav-item"
+                  >
                     <router-link
                       :to="{ name: 'Category' }"
                       class="nav-link py-2 small"
+                      >Thể loại</router-link
                     >
-                      Thể loại
-                    </router-link>
                   </li>
-                  <li class="nav-item">
+                  <li
+                    v-if="userStore.hasPermission('SUPPLIER_VIEW')"
+                    class="nav-item"
+                  >
                     <router-link
                       :to="{ name: 'Suppliers' }"
                       class="nav-link py-2 small"
+                      >Nhà cung cấp</router-link
                     >
-                      Nhà cung cấp
-                    </router-link>
                   </li>
-                  <li class="nav-item">
+                  <li
+                    v-if="userStore.hasPermission('COLLECTION_VIEW')"
+                    class="nav-item"
+                  >
                     <router-link
                       :to="{ name: 'Collection' }"
                       class="nav-link py-2 small"
+                      >Bộ sưu tập</router-link
                     >
-                      Bộ sưu tập
-                    </router-link>
                   </li>
-                  <li v-if="adminRole === 'Quản trị viên'" class="nav-item">
+                  <li
+                    v-if="userStore.hasPermission('VOUCHER_VIEW')"
+                    class="nav-item"
+                  >
                     <router-link
                       :to="{ name: 'Voucher' }"
                       class="nav-link py-2 small"
+                      >Mã khuyến mãi</router-link
                     >
-                      Mã khuyến mãi
-                    </router-link>
                   </li>
                 </ul>
               </div>
             </li>
-            <li class="nav-item">
+            <li v-if="userStore.hasPermission('ORDER_VIEW')" class="nav-item">
               <router-link :to="{ name: 'Order' }" class="nav-link rounded-3">
                 <i class="fas fa-shopping-cart me-2"></i> Quản lý đơn hàng
               </router-link>
             </li>
-            <li class="nav-item">
+            <li
+              v-if="userStore.hasPermission('WAREHOUSE_VIEW')"
+              class="nav-item"
+            >
               <router-link
                 :to="{ name: 'WareHouse' }"
                 class="nav-link rounded-3"
@@ -126,33 +163,61 @@ export default {
                 <i class="fas fa-warehouse"></i> Quản lý kho
               </router-link>
             </li>
-            <li v-if="adminRole === 'Quản trị viên'" class="nav-item">
+            <li v-if="userStore.hasPermission('USER_VIEW')" class="nav-item">
               <router-link :to="{ name: 'Users' }" class="nav-link rounded-3">
                 <i class="fas fa-user-cog"></i> Quản lý người dùng
               </router-link>
             </li>
 
-            <li v-if="adminRole === 'Quản trị viên'" class="nav-item">
-              <router-link
-                :to="{ name: 'Statistical' }"
-                class="nav-link rounded-3"
+            <li v-if="userStore.hasPermission('STATISTICAL')" class="nav-item">
+              <a
+                class="nav-link rounded-3 d-flex justify-content-between align-items-center"
+                data-bs-toggle="collapse"
+                href="#statisticalSubmenu"
+                role="button"
+                aria-expanded="false"
               >
-                <i class="fas fa-shopping-cart me-2"></i> Thống kê
-              </router-link>
+                <span><i class="fas fa-chart-pie me-2"></i>Thống kê</span>
+                <i class="fas fa-chevron-down small"></i>
+              </a>
+              <div class="collapse px-3" id="statisticalSubmenu">
+                <ul class="nav flex-column gap-1 mt-1 border-start ms-3 ps-2">
+                  <li class="nav-item">
+                    <router-link
+                      :to="{ name: 'Statistical' }"
+                      class="nav-link py-2 small"
+                      >Trang chủ thống kê</router-link
+                    >
+                  </li>
+                  <li class="nav-item">
+                    <router-link
+                      :to="{ name: 'StatisticalOrder' }"
+                      class="nav-link py-2 small"
+                      >Thống kê đơn hàng</router-link
+                    >
+                  </li>
+                  <li class="nav-item">
+                    <router-link
+                      :to="{ name: 'StatisticalInventory' }"
+                      class="nav-link py-2 small"
+                      >Thống kê Xuất Nhập Tồn</router-link
+                    >
+                  </li>
+                </ul>
+              </div>
             </li>
 
-            <li class="nav-item">
-              <router-link
-                :to="{ name: 'Consult' }"
-                class="nav-link rounded-3 position-relative"
-              >
+            <li
+              v-if="userStore.hasPermission('CONSULT_MANAGER')"
+              class="nav-item"
+            >
+              <router-link :to="{ name: 'Consult' }" class="nav-link rounded-3">
                 <i class="fas fa-comments me-2"></i> Tư vấn khách
               </router-link>
             </li>
-
-            <li v-if="adminRole === 'Quản trị viên'" class="nav-item">
+            <li v-if="userStore.hasPermission('REVIEW_VIEW')" class="nav-item">
               <router-link :to="{ name: 'Review' }" class="nav-link rounded-3">
-                <i class="fas fa-user-cog"></i> Quản lý các bài đánh giá
+                <i class="fas fa-user-cog"></i> Quản lý đánh giá
               </router-link>
             </li>
             <li>
@@ -171,7 +236,6 @@ export default {
           class="d-flex justify-content-between align-items-center py-2 px-4 bg-white border-bottom shadow-sm"
         >
           <h5 class="fw-bold m-0">Bảng điều khiển</h5>
-
           <router-link
             :to="{ name: 'Profile' }"
             class="d-flex align-items-center gap-2 cursor-pointer text-decoration-none text-dark profile-header"
@@ -182,22 +246,19 @@ export default {
                 {{ adminRole }}
               </div>
             </div>
-
             <div
               class="avatar-header bg-brown fw-bold d-flex align-items-center justify-content-center rounded-circle shadow-sm text-white"
             >
               <img
-                v-if="adminAvatar && adminAvatar !== ''"
+                v-if="adminAvatar"
                 :src="`http://localhost:3000/${adminAvatar}`"
                 class="rounded-circle w-100 h-100"
                 style="object-fit: cover"
-                @error="adminAvatar = null"
               />
               <span class="text-brown" v-else>{{ firstChar }}</span>
             </div>
           </router-link>
         </header>
-
         <div class="p-4">
           <router-view />
         </div>

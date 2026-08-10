@@ -87,3 +87,16 @@ exports.delete = async (req, res, next) => {
     return next(new ApiError(500, "Đã có lỗi xảy ra trong quá trình xóa"));
   }
 };
+
+exports.getVariantsByProductId = async (req, res, next) => {
+  const { product_id } = req.params;
+  if (!product_id) return next(new ApiError(400, "Thiếu product_id"));
+  try {
+    const product_variant = new ProductVariant(MongDB.client);
+    const variants = await product_variant.findVariantsByProductId(product_id);
+    return res.json({ variants });
+  } catch (error) {
+    console.log(error);
+    return next(new ApiError(500, "Lỗi server"));
+  }
+};

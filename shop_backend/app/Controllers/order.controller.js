@@ -256,14 +256,14 @@ async function generateVnpayUrl(orderId, amount, ipAddr) {
       return result;
     }, {});
 
-  console.log(vnp_Params);
+  // console.log(vnp_Params);
 
   const signData = querystring.stringify(vnp_Params);
   const hmac = crypto.createHmac("sha512", secretKey);
   const signed = hmac.update(signData, "utf-8").digest("hex");
-  console.log(hmac);
-  console.log("SignData:", signData);
-  console.log("SecureHash:", signed);
+  // console.log(hmac);
+  // console.log("SignData:", signData);
+  // console.log("SecureHash:", signed);
   vnp_Params["vnp_SecureHash"] = signed;
   return vnpUrl + "?" + querystring.stringify(vnp_Params);
 }
@@ -722,7 +722,7 @@ exports.cancelOrder = async (req, res, next) => {
             color_name: i.color,
             size_name: i.size,
           })),
-          employee_id: null, // Vì khách tự hủy nên để null hoặc ID Admin hệ thống
+          employee_id: null,
         };
         await warehouseService.createBill(warehouseBill);
       }
@@ -752,16 +752,251 @@ exports.confirmRefund = async (req, res, next) => {
     if (!order_id) return next(new ApiError(400, "Truyền thiếu id đơn hàng"));
 
     const orderService = new OrderService(MongoDB.client);
-    const order = orderService.findOrder(order_id);
-    if (!order)
+    const order = await orderService.findOrder(order_id);
+    if (!order) return next(new ApiError(404, "Không tìm thấy đơn hàng"));
+
+    // Chỉ cho xác nhận khi đang chờ hoàn tiền
+    if (!["Chờ hoàn tiền", "Đã hoàn trả"].includes(order.order_status))
       return next(
-        new ApiError(404, `Không tìm thấy đơn hàng có id là ${order_id}`),
+        new ApiError(400, "Đơn hàng không ở trạng thái cần hoàn tiền"),
       );
 
-    await orderService.updateStatus(order_id, "Đã hoàn tiền", "Đã hủy");
+    const finalOrderStatus =
+      order.order_status === "Đã hoàn trả" ? "Đã hoàn trả" : "Đã hủy";
 
-    return res.json({ message: "Hủy đơn hàng thành công" });
+    await orderService.updateStatus(order_id, "Đã hoàn tiền", finalOrderStatus);
+
+    return res.json({ message: "Xác nhận hoàn tiền thành công" });
   } catch (error) {
+    return next(new ApiError(500, "Lỗi server"));
+  }
+};
+
+// đổi hàng
+exports.requestExchange = async (req, res, next) => {
+  try {
+    const { order_id, exchange_items } = req.body;
+
+    if (!order_id || !exchange_items?.length)
+      return next(new ApiError(400, "Thiếu thông tin đổi hàng"));
+
+    const orderService = new OrderService(MongoDB.client);
+    const variantService = new Product_Variant(MongoDB.client);
+
+    const order = await orderService.findOrder(order_id);
+    if (!order) return next(new ApiError(404, "Đơn hàng không tồn tại"));
+    if (order.order_status !== "Đã giao")
+      return next(new ApiError(400, "Chỉ đổi hàng khi đơn đã giao"));
+
+    const validatedItems = [];
+
+    for (const ei of exchange_items) {
+      const oldItem = order.items.find(
+        (i) => i.variant_id.toString() === ei.old_variant_id.toString(),
+      );
+      if (!oldItem)
+        return next(new ApiError(404, `Sản phẩm cần đổi không có trong đơn`));
+
+      if (ei.exchange_quantity < 1)
+        return next(new ApiError(400, "Số lượng đổi phải ít nhất là 1"));
+      if (ei.exchange_quantity > oldItem.quantity)
+        return next(
+          new ApiError(
+            400,
+            `Số lượng đổi vượt quá số đã mua (${oldItem.quantity})`,
+          ),
+        );
+
+      const newVariant = await variantService.findVariantById(
+        ei.new_variant_id,
+      );
+      if (!newVariant)
+        return next(new ApiError(404, "Sản phẩm muốn đổi không tồn tại"));
+      if (newVariant.quantity < ei.exchange_quantity)
+        return next(
+          new ApiError(
+            400,
+            `Kho không đủ (có: ${newVariant.quantity}, cần: ${ei.exchange_quantity})`,
+          ),
+        );
+
+      validatedItems.push({
+        old_variant_id: oldItem.variant_id,
+        new_variant_id: newVariant._id,
+        exchange_quantity: ei.exchange_quantity,
+        old_color: oldItem.color,
+        old_size: oldItem.size,
+        new_color: newVariant.color_name,
+        new_size: newVariant.size_name,
+        product_name: oldItem.product_name,
+      });
+    }
+
+    await orderService.createExchangeRequest(order_id, validatedItems);
+    return res.send("Đã ghi nhận yêu cầu đổi hàng!");
+  } catch (error) {
+    console.error(error);
+    return next(new ApiError(500, "Lỗi server"));
+  }
+};
+
+//Xác nhận đã nhận hàng cũ và tạo phiếu
+exports.confirmExchange = async (req, res, next) => {
+  try {
+    const order_id = req.params.id;
+
+    const orderService = new OrderService(MongoDB.client);
+    const variantService = new Product_Variant(MongoDB.client);
+    const warehouseService = new WareHouseService(MongoDB.client);
+
+    const order = await orderService.findOrder(order_id);
+    if (!order) return next(new ApiError(404, "Đơn hàng không tồn tại"));
+    if (order.order_status !== "Chờ nhận hàng đổi")
+      return next(
+        new ApiError(400, "Đơn không ở trạng thái chờ nhận hàng đổi"),
+      );
+
+    for (const ex of order.exchange_items) {
+      const newVariant = await variantService.findVariantById(
+        ex.new_variant_id,
+      );
+      if (!newVariant || newVariant.quantity < ex.exchange_quantity)
+        return next(
+          new ApiError(400, `Kho hàng mới không còn đủ cho ${ex.product_name}`),
+        );
+
+      await variantService.adjustQuantity(
+        ex.old_variant_id,
+        ex.exchange_quantity,
+      );
+      await warehouseService.createBill({
+        type: "Phiếu nhập kho",
+        employee_id: req.user._id,
+        order_id: order._id,
+        reason: `Nhận hàng đổi trả - Đơn #${order_id}`,
+        items: [
+          {
+            variant_id: ex.old_variant_id,
+            product_name: ex.product_name,
+            quantity: ex.exchange_quantity,
+            color_name: ex.old_color,
+            size_name: ex.old_size,
+          },
+        ],
+        total_price: 0,
+      });
+
+      await variantService.adjustQuantity(
+        ex.new_variant_id,
+        -ex.exchange_quantity,
+      );
+      await warehouseService.createBill({
+        type: "Phiếu xuất hàng",
+        employee_id: req.user._id,
+        order_id: order._id,
+        reason: `Xuất hàng đổi trả - Đơn #${order_id}`,
+        items: [
+          {
+            variant_id: ex.new_variant_id,
+            product_name: ex.product_name,
+            quantity: ex.exchange_quantity,
+            color_name: ex.new_color,
+            size_name: ex.new_size,
+          },
+        ],
+      });
+    }
+
+    await orderService.updateStatus(
+      order_id,
+      order.pay_status,
+      "Đã đổi hàng",
+      req.user._id,
+    );
+    return res.send("Xác nhận đổi hàng thành công!");
+  } catch (error) {
+    console.error(error);
+    return next(new ApiError(500, "Lỗi server"));
+  }
+};
+// hoàn trả hàng nhân viên tạo yêu cầu
+exports.returnOrder = async (req, res, next) => {
+  try {
+    const { order_id, refund_info } = req.body;
+    if (
+      !order_id ||
+      !refund_info?.bank ||
+      !refund_info?.account_number ||
+      !refund_info?.account_name ||
+      !refund_info?.phone
+    )
+      return next(new ApiError(400, "Thiếu thông tin hoàn trả"));
+
+    const orderService = new OrderService(MongoDB.client);
+
+    const order = await orderService.findOrder(order_id);
+    if (!order) return next(new ApiError(404, "Đơn hàng không tồn tại"));
+    if (order.order_status !== "Đã giao")
+      return next(new ApiError(400, "Chỉ hoàn trả khi đơn đã giao"));
+
+    // Chưa nhập kho — chờ nhận hàng thực tế từ khách trước
+    await orderService.updateCancelInfo(order_id, {
+      order_status: "Chờ hoàn trả",
+      pay_status: "Chờ hoàn tiền",
+      refund_info,
+      updated_at: new Date(),
+    });
+
+    return res.send("Đã ghi nhận yêu cầu hoàn trả, chờ nhận hàng từ khách!");
+  } catch (error) {
+    console.error(error);
+    return next(new ApiError(500, "Lỗi server"));
+  }
+};
+
+// Xác nhận hoàn trả
+exports.confirmReceiveReturn = async (req, res, next) => {
+  try {
+    const order_id = req.params.id;
+
+    const orderService = new OrderService(MongoDB.client);
+    const variantService = new Product_Variant(MongoDB.client);
+    const warehouseService = new WareHouseService(MongoDB.client);
+
+    const order = await orderService.findOrder(order_id);
+    if (!order) return next(new ApiError(404, "Đơn hàng không tồn tại"));
+    if (order.order_status !== "Chờ hoàn trả")
+      return next(new ApiError(400, "Đơn không ở trạng thái chờ hoàn trả"));
+
+    // Lúc này mới thực sự nhập hàng về kho
+    for (const item of order.items) {
+      await variantService.adjustQuantity(item.variant_id, item.quantity);
+    }
+
+    await warehouseService.createBill({
+      type: "Phiếu nhập kho",
+      employee_id: req.user._id,
+      order_id: order._id,
+      reason: `Nhận hàng hoàn trả - Đơn #${order_id}`,
+      items: order.items.map((i) => ({
+        variant_id: i.variant_id,
+        product_name: i.product_name,
+        quantity: i.quantity,
+        color_name: i.color,
+        size_name: i.size,
+      })),
+      total_price: 0,
+    });
+
+    await orderService.updateCancelInfo(order_id, {
+      order_status: "Đã hoàn trả",
+      pay_status: "Chờ hoàn tiền",
+      updated_at: new Date(),
+    });
+
+    return res.send("Đã nhận hàng, tiến hành chuyển tiền cho khách!");
+  } catch (error) {
+    console.error(error);
     return next(new ApiError(500, "Lỗi server"));
   }
 };

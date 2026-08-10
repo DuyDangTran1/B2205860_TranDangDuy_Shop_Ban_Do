@@ -229,6 +229,36 @@ class Order {
       .toArray();
   }
 
+  async createExchangeRequest(orderId, exchange_items) {
+    return await this.Order.findOneAndUpdate(
+      { _id: new ObjectId(orderId) },
+      {
+        $set: {
+          order_status: "Chờ nhận hàng đổi",
+          exchange_items,
+          updated_at: new Date(),
+        },
+      },
+      { returnDocument: "after" },
+    );
+  }
+
+  async createReturnRequest(orderId, { return_items, refund_amount }) {
+    return await this.Order.findOneAndUpdate(
+      { _id: new ObjectId(orderId) },
+      {
+        $set: {
+          order_status: "Chờ hoàn trả",
+          pay_status: "Chờ hoàn tiền",
+          return_items,
+          refund_amount,
+          updated_at: new Date(),
+        },
+      },
+      { returnDocument: "after" },
+    );
+  }
+
   async updateCancelInfo(orderId, updateData) {
     return await this.Order.findOneAndUpdate(
       { _id: new ObjectId(orderId) },

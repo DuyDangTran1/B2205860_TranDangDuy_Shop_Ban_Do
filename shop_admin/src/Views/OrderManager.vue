@@ -1,9 +1,15 @@
 <script>
 import Loading from "@/components/Loading.vue";
 import orderService from "@/services/order.service";
+import variantService from "@/services/product_variant.service";
+import { useUserStore } from "@/stores/user";
 import Swal from "sweetalert2";
 export default {
   components: { Loading },
+  setup() {
+    const userStore = useUserStore();
+    return { userStore };
+  },
   data() {
     return {
       loading: true,
@@ -22,6 +28,17 @@ export default {
       showRefundModal: false,
       detailOrder: {},
       refundInfo: null,
+      showExchangeModal: false,
+      exchangeOrder: null,
+      exchangeCart: [],
+      exchangeStep: 1,
+      selectedOldItem: null,
+      availableVariants: [],
+      selectedNewVariantId: null,
+      exchangeQuantity: 1,
+      loadingVariants: false,
+      showConfirmExchangeModal: false,
+      confirmExchangeOrder: null,
     };
   },
   computed: {
@@ -72,6 +89,8 @@ export default {
       this.showDetailModal = false;
       this.showRefundModal = false;
       this.showShippingModal = false;
+      this.showExchangeModal = false;
+      this.showConfirmExchangeModal = false;
       this.detailOrder = {};
     },
     openShippingModal(order) {
@@ -220,6 +239,157 @@ export default {
         }
       }
     },
+    // Mở modal — reset exchangeCart
+    openExchangeModal(order) {
+      this.exchangeOrder = order;
+      this.exchangeStep = 1;
+      this.selectedOldItem = null;
+      this.availableVariants = [];
+      this.selectedNewVariantId = null;
+      this.exchangeQuantity = 1;
+      this.exchangeCart = [];
+      this.showExchangeModal = true;
+    },
+
+    // Sau khi chọn xong 1 item → thêm vào cart, quay về bước 1 chọn tiếp
+    async confirmOneExchangeItem() {
+      if (!this.selectedNewVariantId)
+        return Swal.fire({
+          icon: "warning",
+          text: "Vui lòng chọn biến thể muốn đổi",
+        });
+
+      // Tránh chọn trùng old_variant_id
+      const existed = this.exchangeCart.findIndex(
+        (c) => c.old_variant_id === this.selectedOldItem.variant_id,
+      );
+      const item = {
+        old_variant_id: this.selectedOldItem.variant_id,
+        new_variant_id: this.selectedNewVariantId,
+        exchange_quantity: this.exchangeQuantity,
+        // Hiển thị
+        product_name: this.selectedOldItem.product_name,
+        old_color: this.selectedOldItem.color,
+        old_size: this.selectedOldItem.size,
+        new_color: this.availableVariants.find(
+          (v) => v._id === this.selectedNewVariantId,
+        )?.color_name,
+        new_size: this.availableVariants.find(
+          (v) => v._id === this.selectedNewVariantId,
+        )?.size_name,
+      };
+
+      if (existed >= 0) this.exchangeCart.splice(existed, 1, item);
+      else this.exchangeCart.push(item);
+
+      // Quay về bước 1 để chọn thêm hoặc submit
+      this.exchangeStep = 1;
+      this.selectedOldItem = null;
+      this.selectedNewVariantId = null;
+      this.exchangeQuantity = 1;
+    },
+
+    async submitExchange() {
+      if (!this.exchangeCart.length)
+        return Swal.fire({
+          icon: "warning",
+          text: "Chưa chọn sản phẩm nào để đổi",
+        });
+
+      const result = await Swal.fire({
+        text: `Xác nhận đổi ${this.exchangeCart.length} sản phẩm?`,
+        icon: "question",
+        showCancelButton: true,
+        confirmButtonColor: "#533422",
+        cancelButtonColor: "#6c757d",
+        confirmButtonText: "Xác nhận",
+        cancelButtonText: "Hủy",
+      });
+      if (!result.isConfirmed) return;
+
+      this.loading = true;
+      try {
+        await orderService.requestExchange({
+          order_id: this.exchangeOrder._id,
+          exchange_items: this.exchangeCart.map((c) => ({
+            old_variant_id: c.old_variant_id,
+            new_variant_id: c.new_variant_id,
+            exchange_quantity: c.exchange_quantity,
+          })),
+        });
+        Swal.fire({
+          icon: "success",
+          text: "Đã ghi nhận yêu cầu đổi hàng!",
+          confirmButtonColor: "#533422",
+        });
+        this.showExchangeModal = false;
+        await this.loadOrders();
+      } catch (e) {
+        Swal.fire({
+          icon: "error",
+          text: e.response?.data?.message || "Lỗi tạo yêu cầu",
+          confirmButtonColor: "#533422",
+        });
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async selectItemToExchange(item) {
+      this.selectedOldItem = item;
+      this.loadingVariants = true;
+      this.exchangeStep = 2;
+      try {
+        const data = await variantService.getVariantsByProductId(
+          item.product_id,
+        );
+        this.availableVariants = data.variants.filter(
+          (v) => v._id !== item.variant_id.toString(),
+        );
+      } catch (e) {
+        Swal.fire({ icon: "error", text: "Không tải được biến thể sản phẩm" });
+        this.exchangeStep = 1;
+      } finally {
+        this.loadingVariants = false;
+      }
+    },
+
+    openConfirmExchange(order) {
+      this.confirmExchangeOrder = order;
+      this.showConfirmExchangeModal = true;
+    },
+
+    async confirmExchange() {
+      const result = await Swal.fire({
+        text: `Xác nhận đã nhận hàng cũ và xuất hàng mới?`,
+        icon: "question",
+        showCancelButton: true,
+        confirmButtonColor: "#6f42c1",
+        cancelButtonColor: "#6c757d",
+        confirmButtonText: "Xác nhận",
+        cancelButtonText: "Hủy",
+      });
+      if (!result.isConfirmed) return;
+
+      this.loading = true;
+      try {
+        await orderService.confirmExchange(this.confirmExchangeOrder._id);
+        Swal.fire({
+          icon: "success",
+          text: "Đổi hàng thành công!",
+          confirmButtonColor: "#6f42c1",
+        });
+        this.showConfirmExchangeModal = false;
+        await this.loadOrders();
+      } catch (e) {
+        Swal.fire({
+          icon: "error",
+          text: e.response?.data?.message || "Lỗi xác nhận đổi hàng",
+        });
+      } finally {
+        this.loading = false;
+      }
+    },
   },
   mounted() {
     this.loadOrders();
@@ -261,6 +431,8 @@ export default {
             <option value="Đã giao">Đã giao</option>
             <option value="Đã hủy">Đã hủy</option>
             <option value="Chờ hoàn tiền">Chờ hoàn tiền</option>
+            <option value="Chờ nhận hàng đổi">Chờ nhận hàng đổi</option>
+            <option value="Đã đổi hàng">Đã đổi hàng</option>
           </select>
         </div>
         <div class="col-md-3">
@@ -373,6 +545,10 @@ export default {
                     order.order_status === 'Đã hủy',
                   'bg-secondary-subtle text-dark':
                     order.order_status === 'Chờ hoàn tiền',
+                  'bg-purple-subtle text-purple':
+                    order.order_status === 'Chờ nhận hàng đổi',
+                  'bg-teal-subtle text-teal':
+                    order.order_status === 'Đã đổi hàng',
                 }"
               >
                 {{ order.order_status || "Chờ xác nhận" }}
@@ -389,7 +565,11 @@ export default {
                 </button>
 
                 <button
-                  v-if="order.pay_method !== 'cod' && order.refund_info"
+                  v-if="
+                    userStore.hasPermission('ORDER_UPDATE_STATUS') &&
+                    order.pay_method !== 'cod' &&
+                    order.refund_info
+                  "
                   class="btn btn-sm btn-warning me-2"
                   title="Thông tin hoàn tiền"
                   @click="openRefundInfo(order)"
@@ -397,42 +577,70 @@ export default {
                   <i class="fas fa-hand-holding-usd"></i>
                 </button>
 
-                <button
-                  v-if="
-                    order.order_status === 'Đang chờ xác nhận' ||
-                    !order.order_status
-                  "
-                  class="btn btn-sm btn-shop me-2"
-                  @click="processOrder(order, 'Đã xác nhận')"
-                >
-                  <i class="fas fa-check"></i>
-                </button>
+                <template v-if="userStore.hasPermission('ORDER_UPDATE_STATUS')">
+                  <button
+                    v-if="
+                      order.order_status === 'Đang chờ xác nhận' ||
+                      !order.order_status
+                    "
+                    class="btn btn-sm btn-shop me-2"
+                    @click="processOrder(order, 'Đã xác nhận')"
+                  >
+                    <i class="fas fa-check"></i>
+                  </button>
+
+                  <button
+                    v-if="
+                      order.order_status === 'Đang chờ xác nhận' ||
+                      !order.order_status
+                    "
+                    class="btn btn-sm btn-outline-danger me-2"
+                    @click="processOrder(order, 'Đã hủy')"
+                  >
+                    <i class="fas fa-times"></i>
+                  </button>
+
+                  <button
+                    v-if="order.order_status === 'Đã xác nhận'"
+                    class="btn btn-sm btn-primary me-2"
+                    @click="openShippingModal(order)"
+                  >
+                    <i class="fas fa-truck"></i>
+                  </button>
+
+                  <button
+                    v-if="order.order_status === 'Đang giao'"
+                    class="btn btn-sm btn-success me-2"
+                    @click="processOrder(order, 'Đã giao')"
+                  >
+                    <i class="fas fa-box-open"></i>
+                  </button>
+                </template>
 
                 <button
                   v-if="
-                    order.order_status === 'Đang chờ xác nhận' ||
-                    !order.order_status
+                    userStore.hasPermission('ORDER_REQUEST_EXCHANGE') &&
+                    order.order_status === 'Đã giao'
                   "
-                  class="btn btn-sm btn-outline-danger me-2"
-                  @click="processOrder(order, 'Đã hủy')"
+                  class="btn btn-sm me-2"
+                  style="background-color: #533422; color: white"
+                  title="Đổi hàng"
+                  @click="openExchangeModal(order)"
                 >
-                  <i class="fas fa-times"></i>
+                  <i class="fas fa-exchange-alt"></i>
                 </button>
 
                 <button
-                  v-if="order.order_status === 'Đã xác nhận'"
-                  class="btn btn-sm btn-primary me-2"
-                  @click="openShippingModal(order)"
+                  v-if="
+                    userStore.hasPermission('ORDER_CONFIRM_EXCHANGE') &&
+                    order.order_status === 'Chờ nhận hàng đổi'
+                  "
+                  class="btn btn-sm text-white me-2"
+                  style="background-color: #6f42c1"
+                  title="Xác nhận đã nhận hàng đổi"
+                  @click="openConfirmExchange(order)"
                 >
-                  <i class="fas fa-truck"></i>
-                </button>
-
-                <button
-                  v-if="order.order_status === 'Đang giao'"
-                  class="btn btn-sm btn-success"
-                  @click="processOrder(order, 'Đã giao')"
-                >
-                  <i class="fas fa-box-open"></i>
+                  <i class="fas fa-boxes"></i>
                 </button>
               </div>
             </td>
@@ -566,6 +774,248 @@ export default {
       </div>
     </div>
   </div>
+
+  <div v-if="showExchangeModal" class="modal-overlay">
+    <div
+      class="modal-content rounded-4 p-4 shadow"
+      style="width: 560px; max-height: 80vh; overflow-y: auto"
+    >
+      <div
+        class="d-flex justify-content-between align-items-center mb-3 border-bottom pb-2"
+      >
+        <h5 class="fw-bold mb-0" style="color: #533422">
+          <i class="fas fa-exchange-alt me-2"></i>
+          Đổi hàng - Đơn #{{ exchangeOrder._id.slice(-6).toUpperCase() }}
+        </h5>
+        <button class="btn-close" @click="showExchangeModal = false"></button>
+      </div>
+
+      <!--Chọn sản phẩm -->
+      <div v-if="exchangeStep === 1">
+        <p class="text-muted small mb-3">Chọn sản phẩm trong đơn muốn đổi:</p>
+
+        <div
+          v-for="item in exchangeOrder.items"
+          :key="item.variant_id"
+          class="d-flex align-items-center p-3 mb-2 border rounded-3"
+          style="cursor: pointer; transition: all 0.2s"
+          :style="
+            exchangeCart.some((c) => c.old_variant_id === item.variant_id)
+              ? 'border-color: #533422 !important; background: #fdf5f0;'
+              : ''
+          "
+          @click="selectItemToExchange(item)"
+        >
+          <img
+            :src="`http://localhost:3000/${item.image}`"
+            class="rounded-2 me-3"
+            style="width: 56px; height: 56px; object-fit: cover"
+            @error="$event.target.style.display = 'none'"
+          />
+          <div class="flex-grow-1">
+            <div class="fw-bold small">{{ item.product_name }}</div>
+            <div class="text-muted small">
+              {{ item.color }} / {{ item.size }}
+            </div>
+            <div class="text-muted small">
+              Số lượng đã mua: <strong>{{ item.quantity }}</strong>
+            </div>
+            <!-- Hiện thông tin đã chọn đổi sang -->
+            <div
+              v-if="
+                exchangeCart.find((c) => c.old_variant_id === item.variant_id)
+              "
+              class="small mt-1 fw-bold"
+              style="color: #533422"
+            >
+              <i class="fas fa-check-circle me-1"></i>
+              Đổi sang:
+              {{
+                exchangeCart.find((c) => c.old_variant_id === item.variant_id)
+                  .new_color
+              }}
+              /
+              {{
+                exchangeCart.find((c) => c.old_variant_id === item.variant_id)
+                  .new_size
+              }}
+              (x{{
+                exchangeCart.find((c) => c.old_variant_id === item.variant_id)
+                  .exchange_quantity
+              }})
+            </div>
+          </div>
+          <i class="fas fa-chevron-right text-muted"></i>
+        </div>
+
+        <button
+          v-if="exchangeCart.length > 0"
+          class="btn w-100 mt-3 text-white fw-bold"
+          style="background-color: #533422"
+          @click="submitExchange"
+        >
+          <i class="fas fa-check me-2"></i>
+          Gửi yêu cầu đổi {{ exchangeCart.length }} sản phẩm
+        </button>
+      </div>
+
+      <div v-if="exchangeStep === 2">
+        <button class="btn btn-sm btn-light mb-3" @click="exchangeStep = 1">
+          <i class="fas fa-arrow-left me-1"></i> Chọn lại sản phẩm
+        </button>
+
+        <div class="p-2 mb-3 rounded-3 bg-light small">
+          <strong>Đang đổi:</strong> {{ selectedOldItem.product_name }}
+          <span class="text-muted"
+            >({{ selectedOldItem.color }} / {{ selectedOldItem.size }})</span
+          >
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label small fw-bold">
+            Số lượng đổi
+            <span class="text-muted fw-normal"
+              >(tối đa: {{ selectedOldItem.quantity }})</span
+            >
+          </label>
+          <input
+            v-model.number="exchangeQuantity"
+            type="number"
+            class="form-control"
+            :min="1"
+            :max="selectedOldItem.quantity"
+          />
+        </div>
+
+        <div v-if="loadingVariants" class="text-center py-3">
+          <div
+            class="spinner-border spinner-border-sm"
+            style="color: #533422"
+          ></div>
+          <span class="ms-2 small text-muted">Đang tải biến thể...</span>
+        </div>
+
+        <div v-else>
+          <label class="form-label small fw-bold"
+            >Chọn biến thể muốn đổi sang:</label
+          >
+
+          <div
+            v-if="availableVariants.length === 0"
+            class="text-muted small text-center py-3"
+          >
+            Không có biến thể nào khác để đổi
+          </div>
+
+          <div
+            v-for="v in availableVariants"
+            :key="v._id"
+            class="d-flex align-items-center p-2 mb-2 border rounded-3"
+            style="cursor: pointer; transition: all 0.2s"
+            :style="
+              selectedNewVariantId === v._id
+                ? 'border-color: #533422 !important; background: #fdf5f0;'
+                : ''
+            "
+            @click="selectedNewVariantId = v._id"
+          >
+            <img
+              :src="`http://localhost:3000/${v.image_url}`"
+              class="rounded-2 me-3"
+              style="width: 48px; height: 48px; object-fit: cover"
+              @error="$event.target.style.display = 'none'"
+            />
+            <div class="flex-grow-1 small">
+              <div class="fw-bold">{{ v.color_name }} / {{ v.size_name }}</div>
+              <div class="text-muted">Tồn kho: {{ v.quantity }}</div>
+            </div>
+            <i
+              v-if="selectedNewVariantId === v._id"
+              class="fas fa-check-circle"
+              style="color: #533422"
+            ></i>
+          </div>
+        </div>
+
+        <button
+          class="btn w-100 mt-3 text-white fw-bold"
+          style="background-color: #533422"
+          :disabled="!selectedNewVariantId || loadingVariants"
+          @click="confirmOneExchangeItem"
+        >
+          <i class="fas fa-plus me-2"></i>Thêm vào danh sách đổi
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div v-if="showConfirmExchangeModal" class="modal-overlay">
+    <div class="modal-content rounded-4 p-4 shadow" style="width: 560px">
+      <div
+        class="d-flex justify-content-between align-items-center mb-3 border-bottom pb-2"
+      >
+        <h5 class="fw-bold text-shop mb-0">
+          <i class="fas fa-exchange-alt me-2"></i>
+          Xác nhận đổi hàng - Đơn #{{
+            confirmExchangeOrder._id.slice(-6).toUpperCase()
+          }}
+        </h5>
+        <button
+          class="btn-close"
+          @click="showConfirmExchangeModal = false"
+        ></button>
+      </div>
+
+      <table class="table table-sm">
+        <thead class="table-light">
+          <tr>
+            <th>Sản phẩm</th>
+            <th class="text-center">Nhận lại</th>
+            <th class="text-center">Xuất đi</th>
+            <th class="text-center">SL</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="(ex, idx) in confirmExchangeOrder.exchange_items"
+            :key="idx"
+          >
+            <td>
+              <div class="fw-bold small">{{ ex.product_name }}</div>
+            </td>
+            <td class="text-center">
+              <small class="text-danger"
+                >{{ ex.old_color }} / {{ ex.old_size }}</small
+              >
+            </td>
+            <td class="text-center">
+              <small class="text-success fw-bold"
+                >{{ ex.new_color }} / {{ ex.new_size }}</small
+              >
+            </td>
+            <td class="text-center">x{{ ex.exchange_quantity }}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p class="small text-muted mb-3">
+        <i class="fas fa-info-circle me-1"></i>
+        Xác nhận khi đã nhận đủ hàng cũ từ khách và chuẩn bị xuất hàng mới.
+      </p>
+
+      <div class="d-flex gap-2">
+        <button class="btn btn-shop flex-grow-1" @click="confirmExchange">
+          Xác nhận đã nhận & xuất hàng
+        </button>
+        <button
+          class="btn btn-light px-4"
+          @click="showConfirmExchangeModal = false"
+        >
+          Đóng
+        </button>
+      </div>
+    </div>
+  </div>
 </template>
 
 <style scoped>
@@ -606,6 +1056,18 @@ export default {
   background-color: #a0522d;
 }
 
+.bg-purple-subtle {
+  background-color: #f0e6ff;
+}
+.text-purple {
+  color: #6f42c1;
+}
+.bg-teal-subtle {
+  background-color: #d2f4ea;
+}
+.text-teal {
+  color: #0d6e4f;
+}
 .btn-confirm:hover {
   color: #fff;
   background-color: #533422;

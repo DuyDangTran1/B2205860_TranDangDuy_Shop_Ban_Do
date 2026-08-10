@@ -16,6 +16,10 @@ class ProductVariant {
   deleteVariant = async (id) => {
     return (await this.privateApi.delete(`/${id}`)).data;
   };
+
+  getVariantsByProductId = async (product_id) => {
+    return (await this.privateApi.get(`/by-product/${product_id}`)).data;
+  };
 }
 
 export default new ProductVariant();

@@ -7,7 +7,7 @@ import {
 } from "../utils/validator.util";
 
 import UserService from "../services/user.service";
-
+import Swal from "sweetalert2";
 export default {
   data() {
     return {
@@ -52,13 +52,17 @@ export default {
       if (hasError) return;
 
       try {
-        console.log(this.user);
+        // console.log(this.user);
         const result = await UserService.register(this.user);
 
-        this.showToast = true;
-        setTimeout(() => {
-          this.showToast = false;
-        }, 1000);
+        Swal.fire({
+          icon: "success",
+          text: `Đăng kí tài khoản thành công`,
+          timer: 2000,
+          showConfirmButton: false,
+          position: "center",
+        });
+        this.$router.push({ name: "Login" });
       } catch (error) {
         const serverRes = error.response;
 
@@ -74,6 +78,10 @@ export default {
           this.err.err_res = serverRes?.data?.message || "Đã có lỗi xảy ra!";
         }
       }
+    },
+
+    Login() {
+      this.$router.push({ name: "Login" });
     },
   },
 };
@@ -163,7 +171,7 @@ export default {
                   ><a class="fw-bold" href="#">Điều khoản</a></label
                 >
               </div>
-              <p>
+              <p @click="Login">
                 Bạn đã có tài khoản?
                 <a class="fw-bold" href="#">Đăng nhập ngay</a>
               </p>
@@ -187,13 +195,6 @@ export default {
               {{ err.err_res }}
             </div>
           </form>
-        </div>
-      </div>
-    </div>
-    <div v-if="showToast" class="toast-container-center">
-      <div class="custom-toast animate__animated animate__zoomIn">
-        <div class="toast-body">
-          <h5>Đăng ký thành công!</h5>
         </div>
       </div>
     </div>
