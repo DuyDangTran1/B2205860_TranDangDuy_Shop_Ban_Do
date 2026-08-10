@@ -13,6 +13,7 @@ class Employee {
       password: payload.password,
       address: payload.address,
       role: payload.role,
+      permissions: payload.permissions || [],
       birthday: payload.birthday,
       url_image: payload.url_image,
       updated_at: new Date(),
@@ -84,6 +85,19 @@ class Employee {
   // đếm số nhân viên
   async countEmployee() {
     return this.Employee.countDocuments();
+  }
+
+  async updatePermissions(id, permissions) {
+    return await this.Employee.findOneAndUpdate(
+      { _id: ObjectId.isValid(id) ? new ObjectId(id) : null },
+      {
+        $set: {
+          permissions: permissions,
+          updated_at: new Date(),
+        },
+      },
+      { returnDocument: "after" },
+    );
   }
 }
 
