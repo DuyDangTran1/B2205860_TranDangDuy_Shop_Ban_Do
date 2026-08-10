@@ -6,7 +6,7 @@ const ProductService = require("../services/products.service");
 const genai = require("@google/genai");
 
 // Hàm retry cho Gemini
-async function callGeminiWithRetry(ai, prompt, maxRetries = 3) {
+async function callGeminiWithRetry(ai, prompt, maxRetries = 5) {
   for (let i = 0; i < maxRetries; i++) {
     try {
       const result = await ai.models.generateContent({
@@ -15,6 +15,7 @@ async function callGeminiWithRetry(ai, prompt, maxRetries = 3) {
       });
       return result.text;
     } catch (error) {
+      console.log(error);
       const is503 =
         error?.status === 503 ||
         error?.message?.includes("503") ||
@@ -38,8 +39,13 @@ function isNewSearchIntent(message, hasLastest) {
   // Nhóm 2: Nhu cầu/Hoàn cảnh (Ngữ cảnh)
   const context =
     "thể thao|gym|đá banh|đi chơi|đi tiệc|công sở|mùa hè|mùa đông|nắng|lạnh";
-  // Nhóm 3: Tính từ mô tả/Hành động (Action) - Duy dùng cái này để bắt intent tìm kiếm
+  // Nhóm 3: Tính từ mô tả/Hành động (Action)
   const action = "tìm|mua|bst|mới|hot|nào|gì";
+
+  const genderKeywords = /(nam|nữ|con trai|con gái|phái mạnh|phái đẹp)/i;
+  if (genderKeywords.test(message)) {
+    return true;
+  }
 
   const productKeywords = new RegExp(`(${items}|${context}|${action})`, "i");
 
@@ -160,6 +166,18 @@ ${variantsText || "Không có thông tin"}
 Bạn là "nhân viên tư vấn" - Chuyên viên tư vấn thời trang thông minh của SHOPDB.
 Phong cách: Trẻ trung, năng động, gọi khách là "anh/chị". 
 
+# THÔNG TIN CHÍNH SÁCH CỦA CỬA HÀNG (QUY ĐỊNH CỨNG)
+1. CHÍNH SÁCH ĐỔI TRẢ:
+   - Hỗ trợ đổi trả hàng trong vòng 7 ngày kể từ ngày nhận hàng thành công.
+   - Sản phẩm đổi trả phải còn nguyên tem mác, chưa qua giặt là và không có mùi lạ.
+   - Miễn phí đổi hàng nếu do lỗi của nhà sản xuất hoặc shop giao nhầm size/mẫu.
+2. CHÍNH SÁCH VẬN CHUYỂN & GIAO NHẬN:
+   - Đồng giá ship nội thành Cần Thơ là 20.000 VNĐ. Ship toàn quốc đồng giá 30.000 VNĐ.
+   - Đơn hàng có hóa đơn từ 500.000 VNĐ trở lên sẽ được MIỄN PHÍ VẬN CHUYỂN (Freeship).
+   - Thời gian nhận hàng: Nội thành Cần Thơ (1-2 ngày), các tỉnh thành khác (3-5 ngày).
+   - KHÁCH HÀNG ĐƯỢC PHÉP KIỂM TRA HÀNG trước khi thanh toán (Đồng kiểm).  
+
+3.- Khi khách hỏi chung chung về phối đồ, tư vấn phong cách mà chưa rõ giới tính (Ví dụ: "Tư vấn phối đồ đi chơi"), bạn KHÔNG ĐƯỢC tự ý gợi ý sản phẩm ngay. Hãy khéo léo hỏi lại giới tính và nhu cầu của khách trước (Ví dụ: "Dạ, shop rất sẵn lòng tư vấn cho anh/chị ạ! Không biết anh/chị đang muốn tìm đồ đi chơi cho nam hay nữ, và mình thích phong cách năng động hay lịch sự ạ?").
 # DỮ LIỆU KHO HÀNG (CONTEXT)
 ${contextProduct}
 
@@ -195,7 +213,7 @@ ${historyText}
   + Bước 3: Nếu khách hỏi chung chung cho cả danh sách, hãy tư vấn size cho sản phẩm bán chạy nhất hoặc sản phẩm khách vừa đề cập ở câu trước.
 
 7. CHUYỂN GIAO STAFF:
-   - Nếu khách hỏi ngoài lề (chính sách, khiếu nại) hoặc không tìm thấy bất kỳ sản phẩm nào phù hợp:
+   - Nếu khách hỏi ngoài lề (chính sách, khiếu nại) hoặc không tìm thấy bất kỳ sản phẩm nào phù hợp,Nếu khách hàng tỏ thái độ thô lỗ, khiếu nại gay gắt về tiền bạc hoặc cố tình hỏi các câu hỏi nhạy cảm chính trị, xúc phạm hệ thống, hãy trả về:
      Trả lời duy nhất cụm từ: [TRANSFER_STAFF]
 
 # YÊU CẦU CỤ THỂ:
