@@ -4,167 +4,262 @@ const ProductService = require("../services/products.service");
 const OrderService = require("../services/order.service");
 const MongDB = require("../utils/mongodb.util");
 const ApiError = require("../api-error");
+
+// ==================== HELPER FUNCTIONS ====================
+
+const createImportBill = async (items, employee_id, supplier_id, reason) => {
+  const productVariantService = new ProductVariantService(MongDB.client);
+  const productService = new ProductService(MongDB.client);
+  const wareHouseService = new WareHouseService(MongDB.client);
+
+  const checkedItems = [];
+  let total_price = 0;
+
+  for (const item of items) {
+    const variant = await productVariantService.findVariantById(
+      item.variant_id,
+    );
+    if (!variant)
+      throw new Error(`Biến thể ID ${item.variant_id} không tồn tại!`);
+
+    const product = await productService.findProductById(variant.product_id);
+
+    checkedItems.push({
+      variant_id: variant._id,
+      product_name: product ? product.product_name : "Sản phẩm không xác định",
+      color_name: variant.color_name,
+      size_name: variant.size_name,
+      quantity: Number(item.quantity),
+      price: Number(item.price || 0),
+      old_quantity: variant.quantity,
+    });
+
+    total_price += Number(item.price || 0) * Number(item.quantity);
+    await productVariantService.adjustQuantity(variant._id, item.quantity);
+  }
+
+  await wareHouseService.createBill({
+    type: "Phiếu nhập kho",
+    employee_id,
+    supplier_id,
+    reason: reason || "Nhập hàng mới",
+    items: checkedItems,
+    total_price,
+  });
+};
+
+const createExportBill = async (items, employee_id, reason, order_id) => {
+  const productVariantService = new ProductVariantService(MongDB.client);
+  const productService = new ProductService(MongDB.client);
+  const wareHouseService = new WareHouseService(MongDB.client);
+
+  const checkedItems = [];
+
+  for (const item of items) {
+    const variant = await productVariantService.findVariantById(
+      item.variant_id,
+    );
+    if (!variant)
+      throw new Error(`Biến thể ID ${item.variant_id} không tồn tại`);
+
+    if (variant.quantity < Number(item.quantity))
+      throw new Error(
+        `"${variant.color_name} - ${variant.size_name}" không đủ tồn kho (Hiện có: ${variant.quantity}, cần xuất: ${item.quantity})`,
+      );
+
+    const product = await productService.findProductById(variant.product_id);
+
+    checkedItems.push({
+      variant_id: variant._id,
+      product_name: product ? product.product_name : "Sản phẩm không xác định",
+      color_name: variant.color_name,
+      size_name: variant.size_name,
+      quantity: Number(item.quantity),
+      old_quantity: variant.quantity,
+    });
+
+    await productVariantService.adjustQuantity(
+      variant._id,
+      -Number(item.quantity),
+    );
+  }
+
+  await wareHouseService.createBill({
+    type: "Phiếu xuất hàng",
+    employee_id,
+    order_id,
+    reason: reason || "Xuất hàng",
+    items: checkedItems,
+  });
+};
+
+const createAdjustBill = async (items, employee_id, reason) => {
+  const productVariantService = new ProductVariantService(MongDB.client);
+  const productService = new ProductService(MongDB.client);
+  const wareHouseService = new WareHouseService(MongDB.client);
+
+  const checkedItems = [];
+
+  for (const item of items) {
+    const variant = await productVariantService.findVariantById(
+      item.variant_id,
+    );
+    if (!variant)
+      throw new Error(`Không tìm thấy biến thể có id là ${item.variant_id}`);
+
+    const newQuantity = variant.quantity + Number(item.quantity);
+    if (newQuantity < 0)
+      throw new Error(
+        `Sản phẩm không đủ tồn kho để trừ (Hiện có: ${variant.quantity})`,
+      );
+
+    const product = await productService.findProductById(variant.product_id);
+
+    checkedItems.push({
+      variant_id: variant._id,
+      product_name: product ? product.product_name : "Sản phẩm không xác định",
+      color_name: variant.color_name,
+      size_name: variant.size_name,
+      quantity: Number(item.quantity),
+      old_quantity: variant.quantity,
+    });
+
+    await productVariantService.adjustQuantity(variant._id, item.quantity);
+  }
+
+  await wareHouseService.createBill({
+    type: "Phiếu điều chỉnh",
+    employee_id,
+    reason: reason || "Điều chỉnh kho định kỳ",
+    items: checkedItems,
+  });
+};
+
 exports.createBill = async (req, res, next) => {
   if (!req.body.type) return next(new ApiError(400, "Thiếu loại phiếu tạo"));
 
-  const type = req.body.type;
+  const { type, items, supplier_id, reason } = req.body;
+
   try {
     if (type === "Phiếu nhập kho") {
-      if (
-        !req.body.items ||
-        req.body.items.length === 0 ||
-        !req.body.supplier_id
-      ) {
+      if (!items || items.length === 0 || !supplier_id)
         return next(new ApiError(400, "Thiếu thông tin để có thể tạo phiếu"));
-      }
-
-      // items: [{ variant_id1, color_name2, size_name3, quantity4, price5, old_quantity (cho adjust) }]
-      // check kiểm tra các biến thể có tồn tại trong hệ thống không
-      const productVariantService = new ProductVariantService(MongDB.client);
-      const productService = new ProductService(MongDB.client);
-      const checkedItems = [];
-      let total_price = 0;
-      for (const item of req.body.items) {
-        // 1. Kiểm tra xem variant có tồn tại không
-        const variant = await productVariantService.findVariantById(
-          item.variant_id,
-        );
-
-        if (!variant) {
-          return next(
-            new ApiError(404, `Biến thể ID ${item.variant_id} không tồn tại!`),
-          );
-        }
-
-        const product = await productService.findProductById(
-          variant.product_id,
-        );
-
-        const product_name = product
-          ? product.product_name
-          : "Sản phẩm không xác định";
-        checkedItems.push({
-          variant_id: variant._id,
-          product_name: product_name,
-          color_name: variant.color_name,
-          size_name: variant.size_name,
-          quantity: Number(item.quantity),
-          price: Number(item.price || 0),
-          old_quantity: variant.quantity,
-        });
-
-        total_price += Number(item.price) * Number(item.quantity);
-        await productVariantService.adjustQuantity(variant._id, item.quantity);
-      }
-
-      // Gán lại items đã kiểm tra vào payload
-      const payload = {
-        ...req.body,
-        items: checkedItems,
-        reason: req.body.reason || "Nhập hàng mới",
-      };
-
-      payload.employee_id = req.user._id;
-      payload.total_price = total_price;
-      payload.supplier_id = req.body.supplier_id;
-      const wareHouseService = new WareHouseService(MongDB.client);
-      await wareHouseService.createBill(payload);
-
-      return res.send("Tạo phiếu thành công!");
+      await createImportBill(items, req.user._id, supplier_id, reason);
     } else if (type === "Phiếu xuất hàng") {
-      if (!req.body.employee_id || !req.body.order_id)
-        return next(
-          new ApiError(400, "Lỗi truyền thiếu dữ liệu của phiếu cần tạo"),
-        );
-
-      const orderService = new OrderService(MongoDB.client);
-      const order = await orderService.findOrder(req.body.order_id);
-      if (!order) return next(new ApiError(404, "Đơn hàng không tồn tại"));
-      const payload = {
-        employee_id: req.user._id,
-        order_id: req.body.order_id,
-        items: order.items,
-      };
-      for (const item of order.items) {
-        await productVariantService.adjustQuantity(
-          item.variant_id,
-          -item.quantity,
-        );
-      }
-      const wareHouseService = new WareHouseService(MongDB.client);
-      await wareHouseService.createBill(payload);
-
-      return res.send("Tạo phiếu thành công!");
+      if (!items || items.length === 0)
+        return next(new ApiError(400, "Thiếu danh sách sản phẩm cần xuất"));
+      await createExportBill(items, req.user._id, reason, req.body.order_id);
     } else {
-      //Phiếu điều chỉnh
-      if (!req.body.items || req.body.items.length === 0)
+      if (!items || items.length === 0)
         return next(new ApiError(400, "Lỗi thiếu dữ liệu của phiếu cần tạo"));
-
-      const productVariantService = new ProductVariantService(MongDB.client);
-      const productService = new ProductService(MongDB.client);
-      const checkedItems = [];
-
-      for (const item of req.body.items) {
-        const variant = await productVariantService.findVariantById(
-          item.variant_id,
-        );
-        if (!variant)
-          return next(
-            new ApiError(
-              404,
-              `Không tìm thấy biến thể có id là ${item.variant_id}`,
-            ),
-          );
-
-        const newQuantity = variant.quantity + Number(item.quantity);
-        if (newQuantity < 0) {
-          return next(
-            new ApiError(
-              400,
-              `Sản phẩm ${product_name} không đủ tồn kho để trừ (Hiện có: ${variant.quantity})`,
-            ),
-          );
-        }
-        const product = await productService.findProductById(
-          variant.product_id,
-        );
-
-        checkedItems.push({
-          variant_id: variant._id,
-          product_name: product
-            ? product.product_name
-            : "Sản phẩm không xác định",
-          color_name: variant.color_name,
-          size_name: variant.size_name,
-          quantity: Number(item.quantity),
-          old_quantity: variant.quantity,
-        });
-
-        await productVariantService.adjustQuantity(variant._id, item.quantity);
-      }
-
-      const payload = {
-        type: "Phiếu điều chỉnh",
-        employee_id: req.user._id,
-        reason: req.body.reason || "Điều chỉnh kho định kỳ",
-        items: checkedItems,
-        created: new Date(),
-      };
-
-      const wareHouseService = new WareHouseService(MongDB.client);
-      await wareHouseService.createBill(payload);
-      return res.send("Tạo phiếu điều chỉnh thành công!");
+      await createAdjustBill(items, req.user._id, reason);
     }
+
+    return res.send("Tạo phiếu thành công!");
   } catch (error) {
-    return next(new ApiError(500, "Lỗi server"));
+    return next(new ApiError(400, error.message || "Lỗi server"));
   }
 };
+
 exports.getAllBill = async (req, res, next) => {
   try {
     const wareHouseService = new WareHouseService(MongDB.client);
     const bills = await wareHouseService.getAll();
-    return res.json({ bills: bills });
+    return res.json({ bills });
   } catch (error) {
     return next(new ApiError(500, "Lỗi server"));
+  }
+};
+
+exports.exchangeOrder = async (req, res, next) => {
+  const { order_id, new_variant_id } = req.body;
+  if (!order_id || !new_variant_id)
+    return next(new ApiError(400, "Thiếu thông tin đổi hàng"));
+
+  try {
+    const orderService = new OrderService(MongDB.client);
+    const productVariantService = new ProductVariantService(MongDB.client);
+    const productService = new ProductService(MongDB.client);
+
+    const order = await orderService.findOrder(order_id);
+    if (!order) return next(new ApiError(404, "Đơn hàng không tồn tại"));
+    if (order.order_status !== "Đã giao")
+      return next(new ApiError(400, "Chỉ đổi hàng khi đơn đã giao"));
+
+    const newVariant =
+      await productVariantService.findVariantById(new_variant_id);
+    if (!newVariant)
+      return next(new ApiError(404, "Sản phẩm muốn đổi không tồn tại"));
+
+    const oldItem = order.items[0];
+
+    // Nhập hàng cũ về
+    await createImportBill(
+      [
+        {
+          variant_id: oldItem.variant_id,
+          quantity: oldItem.quantity,
+          price: 0,
+        },
+      ],
+      req.user._id,
+      null,
+      `Nhận hàng đổi trả - Đơn #${order_id}`,
+    );
+
+    // Xuất hàng mới ra
+    await createExportBill(
+      [{ variant_id: new_variant_id, quantity: oldItem.quantity }],
+      req.user._id,
+      `Xuất hàng đổi trả - Đơn #${order_id}`,
+      order_id,
+    );
+
+    await orderService.updateStatus(order_id, "Đã đổi hàng", "Đã đổi hàng");
+    return res.send("Đổi hàng thành công!");
+  } catch (error) {
+    return next(new ApiError(400, error.message || "Lỗi server"));
+  }
+};
+
+exports.returnOrder = async (req, res, next) => {
+  const { order_id, refund_info } = req.body;
+  if (
+    !order_id ||
+    !refund_info?.bank ||
+    !refund_info?.account ||
+    !refund_info?.name
+  )
+    return next(new ApiError(400, "Thiếu thông tin hoàn trả"));
+
+  try {
+    const orderService = new OrderService(MongDB.client);
+
+    const order = await orderService.findOrder(order_id);
+    if (!order) return next(new ApiError(404, "Đơn hàng không tồn tại"));
+    if (order.order_status !== "Đã giao")
+      return next(new ApiError(400, "Chỉ hoàn trả khi đơn đã giao"));
+
+    // Nhập toàn bộ hàng về kho
+    await createImportBill(
+      order.items.map((i) => ({
+        variant_id: i.variant_id,
+        quantity: i.quantity,
+        price: 0,
+      })),
+      req.user._id,
+      null,
+      `Nhận hàng hoàn trả - Đơn #${order_id}`,
+    );
+
+    await orderService.updateStatus(
+      order_id,
+      "Chờ hoàn tiền",
+      "Chờ hoàn tiền",
+      refund_info,
+    );
+    return res.send("Đã ghi nhận hoàn trả, chờ chuyển tiền!");
+  } catch (error) {
+    return next(new ApiError(400, error.message || "Lỗi server"));
   }
 };

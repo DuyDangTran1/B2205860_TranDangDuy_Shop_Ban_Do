@@ -22,6 +22,7 @@ class WareHouse {
       total_price: Number(payload.total_price || 0),
       // items: [{ variant_id, color_name, size_name, quantity, old_quantity (cho adjust) }]
       items: payload.items || [],
+      description: payload.description,
       created: new Date(),
     };
 
@@ -152,6 +153,113 @@ class WareHouse {
         },
       },
       { $sort: { totalQty: -1 } },
+    ]).toArray();
+  }
+
+  async getAllProductInventory(keyword = "", startDate, endDate) {
+    const matchFilter = {};
+    if (keyword) {
+      matchFilter["product_info.product_name"] = {
+        $regex: keyword,
+        $options: "i",
+      };
+    }
+
+    const start = startDate
+      ? new Date(startDate)
+      : new Date(new Date().setDate(new Date().getDate() - 30));
+    const end = endDate ? new Date(endDate) : new Date();
+
+    return await this.Product_variant.aggregate([
+      {
+        $lookup: {
+          from: "Products",
+          localField: "product_id",
+          foreignField: "_id",
+          as: "product_info",
+        },
+      },
+      { $unwind: "$product_info" },
+      { $match: matchFilter },
+
+      {
+        $lookup: {
+          from: "WareHouse",
+          let: { vId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                type: "Phiếu nhập kho",
+                created: { $gte: start, $lte: end },
+              },
+            },
+            { $unwind: "$items" },
+            {
+              $match: {
+                $expr: { $eq: ["$items.variant_id", "$$vId"] },
+              },
+            },
+            {
+              $group: {
+                _id: null,
+                total: { $sum: "$items.quantity" },
+              },
+            },
+          ],
+          as: "import_info",
+        },
+      },
+
+      {
+        $lookup: {
+          from: "WareHouse",
+          let: { vId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                type: { $in: ["Phiếu xuất kho", "Phiếu xuất hàng"] },
+                created: { $gte: start, $lte: end },
+              },
+            },
+            { $unwind: "$items" },
+            {
+              $match: {
+                $expr: { $eq: ["$items.variant_id", "$$vId"] },
+              },
+            },
+            {
+              $group: {
+                _id: null,
+                total: { $sum: "$items.quantity" },
+              },
+            },
+          ],
+          as: "export_info",
+        },
+      },
+
+      {
+        $project: {
+          full_name: {
+            $concat: [
+              "$product_info.product_name",
+              " - Size: ",
+              { $ifNull: ["$size_name", "N/A"] },
+              " - Màu: ",
+              { $ifNull: ["$color_name", "N/A"] },
+            ],
+          },
+          image: "$image_url",
+          currentStock: "$quantity",
+          totalImported: {
+            $ifNull: [{ $arrayElemAt: ["$import_info.total", 0] }, 0],
+          },
+          totalExported: {
+            $ifNull: [{ $arrayElemAt: ["$export_info.total", 0] }, 0],
+          },
+        },
+      },
+      { $sort: { currentStock: 1 } },
     ]).toArray();
   }
 }
